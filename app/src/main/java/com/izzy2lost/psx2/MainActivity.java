@@ -2375,9 +2375,9 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
                     }
                 })
                 .setNegativeButton("View License", (dialog, which) -> {
-                    // Open License on GitHub Pages
+                    // Open official GNU GPL v3 license
                     Intent intent = new Intent(Intent.ACTION_VIEW);
-                    intent.setData(Uri.parse("https://izzy2lost.github.io/PSX2/license.html"));
+                    intent.setData(Uri.parse("https://www.gnu.org/licenses/gpl-3.0.html"));
                     try {
                         startActivity(intent);
                     } catch (Exception e) {

@@ -12,9 +12,9 @@
         }
         
         body {
-            font-family: 'Courier New', monospace;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0F1419;
+            color: #DFE2EA;
             line-height: 1.6;
             min-height: 100vh;
         }
@@ -29,57 +29,56 @@
             text-align: center;
             margin-bottom: 3rem;
             padding: 3rem 2rem;
-            background: rgba(0, 255, 200, 0.1);
-            border: 3px solid #00ffc8;
-            border-radius: 8px;
-            box-shadow: 0 0 30px rgba(0, 255, 200, 0.4);
+            background: #1a1f2e;
+            border: 2px solid #9ECAFF;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(158, 202, 255, 0.15);
         }
         
         .header h1 {
             font-size: 3.5rem;
-            color: #00ffc8;
-            text-shadow: 0 0 20px #00ffc8, 0 0 40px rgba(0, 255, 200, 0.5);
+            color: #9ECAFF;
             margin-bottom: 0.5rem;
-            font-weight: bold;
-            letter-spacing: 3px;
+            font-weight: 600;
+            letter-spacing: 1px;
         }
         
         .header p {
-            color: #00ffc8;
-            font-size: 1.3rem;
-            opacity: 0.9;
-            text-shadow: 0 0 10px #00ffc8;
+            color: #BFC7D4;
+            font-size: 1.2rem;
+            opacity: 0.95;
         }
         
         .description {
-            background: rgba(0, 0, 0, 0.5);
-            border: 2px solid #00ffc8;
-            border-radius: 4px;
+            background: #1a1f2e;
+            border: 1px solid #404752;
+            border-radius: 12px;
             padding: 2rem;
             margin-bottom: 2rem;
-            box-shadow: inset 0 0 10px rgba(0, 255, 200, 0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
         
         .description p {
             margin-bottom: 1rem;
-            font-size: 1.1rem;
+            font-size: 1rem;
             line-height: 1.8;
+            color: #DFE2EA;
         }
         
         .features {
-            background: rgba(0, 0, 0, 0.5);
-            border: 2px solid #00ffc8;
-            border-radius: 4px;
+            background: #1a1f2e;
+            border: 1px solid #404752;
+            border-radius: 12px;
             padding: 2rem;
             margin-bottom: 2rem;
-            box-shadow: inset 0 0 10px rgba(0, 255, 200, 0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
         
         .features h2 {
-            color: #00ffc8;
-            margin-bottom: 1rem;
+            color: #9ECAFF;
+            margin-bottom: 1.5rem;
             font-size: 1.5rem;
-            text-shadow: 0 0 10px #00ffc8;
+            font-weight: 600;
         }
         
         .features ul {
@@ -88,16 +87,18 @@
         }
         
         .features li {
-            padding: 0.5rem 0;
+            padding: 0.75rem 0;
             padding-left: 1.5rem;
             position: relative;
+            color: #DFE2EA;
         }
         
         .features li:before {
-            content: "▶";
+            content: "•";
             position: absolute;
             left: 0;
-            color: #00ffc8;
+            color: #9ECAFF;
+            font-weight: bold;
         }
         
         .links {
@@ -110,77 +111,68 @@
         
         .link-button {
             display: inline-block;
-            padding: 1rem 2rem;
-            background: linear-gradient(135deg, #00ffc8, #00cc99);
-            color: #1a1a2e;
+            padding: 0.875rem 1.75rem;
+            background: #33A1FF;
+            color: #003258;
             text-decoration: none;
-            border-radius: 4px;
-            font-weight: bold;
-            transition: all 0.3s;
-            box-shadow: 0 0 15px rgba(0, 255, 200, 0.5);
-            border: 2px solid #00ffc8;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
         }
         
         .link-button:hover {
-            box-shadow: 0 0 25px rgba(0, 255, 200, 0.8);
-            transform: translateY(-3px);
-            background: linear-gradient(135deg, #00ffdd, #00dd99);
+            background: #5BB3FF;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(51, 161, 255, 0.3);
         }
         
         .link-button.secondary {
-            background: rgba(0, 255, 200, 0.1);
-            color: #00ffc8;
-            border: 2px solid #00ffc8;
+            background: transparent;
+            color: #9ECAFF;
+            border: 2px solid #9ECAFF;
         }
         
         .link-button.secondary:hover {
-            background: rgba(0, 255, 200, 0.2);
-            box-shadow: 0 0 25px rgba(0, 255, 200, 0.8);
+            background: rgba(158, 202, 255, 0.1);
+            border-color: #5BB3FF;
+            color: #5BB3FF;
         }
         
         .footer {
             text-align: center;
             padding: 2rem;
-            border-top: 2px solid #00ffc8;
+            border-top: 1px solid #404752;
             margin-top: 2rem;
         }
         
         .footer p {
             margin-bottom: 0.5rem;
+            color: #BFC7D4;
         }
         
         .footer a {
-            color: #00ffc8;
+            color: #9ECAFF;
             text-decoration: none;
             margin: 0 0.5rem;
-            transition: all 0.3s;
+            transition: color 0.3s;
         }
         
         .footer a:hover {
-            text-shadow: 0 0 10px #00ffc8;
-        }
-        
-        .retro-badge {
-            display: inline-block;
-            background: #00ffc8;
-            color: #1a1a2e;
-            padding: 0.25rem 0.75rem;
-            border-radius: 2px;
-            font-weight: bold;
-            font-size: 0.9rem;
-            margin-left: 0.5rem;
+            color: #5BB3FF;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>PSX2 <span class="retro-badge">RETRO</span></h1>
+            <h1>PSX2</h1>
             <p>PlayStation 2 Emulator for Mobile</p>
         </div>
         
         <div class="description">
-            <p>PSX2 is a powerful PlayStation 2 emulator that brings your favorite PS2 games to mobile devices. Experience classic gaming with enhanced performance, modern convenience, and authentic retro vibes.</p>
+            <p>PSX2 is a powerful PlayStation 2 emulator that brings your favorite PS2 games to mobile devices. Experience classic gaming with enhanced performance and modern convenience.</p>
             <p>Built on the legendary PCSX2 emulator and optimized for ARM64 Android devices, PSX2 delivers high compatibility and smooth gameplay.</p>
         </div>
         
@@ -201,7 +193,7 @@
         <div class="links">
             <a href="https://github.com/izzy2lost/PSX2" class="link-button">View on GitHub</a>
             <a href="https://play.google.com/store/apps/details?id=com.izzy2lost.psx2" class="link-button">Download on Play Store</a>
-            <a href="license.html" class="link-button secondary">License</a>
+            <a href="https://www.gnu.org/licenses/gpl-3.0.html" class="link-button secondary">License</a>
             <a href="privacy-policy.html" class="link-button secondary">Privacy Policy</a>
         </div>
         
