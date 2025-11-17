@@ -41,4 +41,7 @@ namespace AchievementsJNI
 	/// Show a generic notification
 	void ShowNotification(const char* message, int duration);
 
+	/// Get the JavaVM instance (for internal use)
+	JavaVM* GetJavaVM();
+
 } // namespace AchievementsJNI

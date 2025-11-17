@@ -29,6 +29,7 @@ public class GameSettingsDialogFragment extends DialogFragment {
 
     // File picker state
     private ActivityResultLauncher<Intent> mPnachPicker;
+    private ActivityResultLauncher<Intent> mCoverPicker;
     private boolean mImportAsCheats = true;
 
     public static GameSettingsDialogFragment newInstance(String gameTitle, String gameUri, String gameSerial, String gameCrc) {
@@ -111,6 +112,96 @@ public class GameSettingsDialogFragment extends DialogFragment {
                     android.widget.Toast.makeText(ctx, (mImportAsCheats ? "Cheats" : "Patch Codes") + " imported for " + gameSerial, android.widget.Toast.LENGTH_SHORT).show();
                 } catch (Exception e) {
                     android.widget.Toast.makeText(ctx, "Import failed: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+        
+        // Register cover picker
+        if (mCoverPicker == null) {
+            mCoverPicker = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+                try {
+                    if (result.getResultCode() != Activity.RESULT_OK) return;
+                    Intent data = result.getData(); if (data == null) return;
+                    Uri uri = data.getData(); if (uri == null) return;
+                    Bundle args = getArguments();
+                    String gameSerial = args != null ? args.getString(ARG_GAME_SERIAL, "") : "";
+                    if (gameSerial == null || gameSerial.isEmpty()) {
+                        try { gameSerial = NativeApp.getCurrentGameSerial(); } catch (Throwable ignored) {}
+                    }
+                    if (gameSerial == null || gameSerial.isEmpty()) {
+                        android.widget.Toast.makeText(ctx, "Serial unknown; cannot set cover", android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    
+                    final String serial = gameSerial;
+                    android.widget.Toast.makeText(ctx, "Processing cover...", android.widget.Toast.LENGTH_SHORT).show();
+                    
+                    // Process in background to avoid blocking UI
+                    new Thread(() -> {
+                        try {
+                            // Load and resize the image
+                            android.content.ContentResolver cr = ctx.getContentResolver();
+                            java.io.InputStream in = cr.openInputStream(uri);
+                            if (in == null) throw new Exception("Cannot open image");
+                            
+                            android.graphics.Bitmap original = android.graphics.BitmapFactory.decodeStream(in);
+                            in.close();
+                            if (original == null) throw new Exception("Cannot decode image");
+                            
+                            // Resize to standard cover dimensions (567x878 for PS2 covers)
+                            int targetWidth = 567;
+                            int targetHeight = 878;
+                            android.graphics.Bitmap resized = android.graphics.Bitmap.createScaledBitmap(
+                                original, targetWidth, targetHeight, true);
+                            original.recycle();
+                            
+                            // Save to SAF location only
+                            androidx.documentfile.provider.DocumentFile existing = SafManager.getChild(ctx, new String[]{"covers"}, serial + ".png");
+                            if (existing != null && existing.exists()) {
+                                existing.delete();
+                            }
+                            androidx.documentfile.provider.DocumentFile newFile = SafManager.createChild(ctx, new String[]{"covers"}, serial + ".png", "image/png");
+                            if (newFile != null) {
+                                java.io.OutputStream out = ctx.getContentResolver().openOutputStream(newFile.getUri(), "w");
+                                if (out != null) {
+                                    resized.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+                                    out.flush();
+                                    out.close();
+                                }
+                            }
+                            resized.recycle();
+                            
+                            // Mark as custom cover
+                            ctx.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                                .edit()
+                                .putBoolean("custom_cover:" + serial, true)
+                                .apply();
+                            
+                            // Clear Glide cache on background thread
+                            try {
+                                com.bumptech.glide.Glide.get(ctx).clearDiskCache();
+                            } catch (Throwable ignored) {}
+                            
+                            // Show success message and clear memory cache on UI thread
+                            if (getActivity() != null && !getActivity().isFinishing()) {
+                                getActivity().runOnUiThread(() -> {
+                                    try {
+                                        com.bumptech.glide.Glide.get(ctx).clearMemory();
+                                    } catch (Throwable ignored) {}
+                                    android.widget.Toast.makeText(ctx, "Cover saved for " + serial, android.widget.Toast.LENGTH_SHORT).show();
+                                });
+                            }
+                        } catch (Exception e) {
+                            android.util.Log.e("GameSettings", "Error saving cover: " + e.getMessage(), e);
+                            if (getActivity() != null && !getActivity().isFinishing()) {
+                                getActivity().runOnUiThread(() -> {
+                                    android.widget.Toast.makeText(ctx, "Failed to save cover: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
+                                });
+                            }
+                        }
+                    }).start();
+                } catch (Exception e) {
+                    android.widget.Toast.makeText(ctx, "Cover import failed: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
                 }
             });
         }
@@ -391,6 +482,43 @@ public class GameSettingsDialogFragment extends DialogFragment {
                         .show();
             });
         }
+        
+        // Custom Cover button wiring
+        com.google.android.material.button.MaterialButton btnCustomCover = view.findViewById(R.id.btn_set_custom_cover);
+        if (btnCustomCover != null) {
+            btnCustomCover.setOnClickListener(v -> {
+                // Check if this game has a custom cover
+                android.content.SharedPreferences prefs = ctx.getSharedPreferences("app_prefs", Context.MODE_PRIVATE);
+                boolean hasCustomCover = prefs.getBoolean("custom_cover:" + gameSerial, false);
+                
+                if (hasCustomCover) {
+                    // Show options: Set New or Delete Custom
+                    final String[] choices = new String[]{"Set New Custom Cover", "Delete Custom Cover"};
+                    new MaterialAlertDialogBuilder(ctx,
+                            com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
+                            .setCustomTitle(UiUtils.centeredDialogTitle(ctx, "Custom Cover"))
+                            .setItems(choices, (dlg, which) -> {
+                                if (which == 0) {
+                                    // Set new custom cover
+                                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                                    intent.setType("image/*");
+                                    mCoverPicker.launch(intent);
+                                } else {
+                                    // Delete custom cover
+                                    deleteCustomCover(ctx, gameSerial);
+                                }
+                            })
+                            .show();
+                } else {
+                    // No custom cover exists, directly open picker
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("image/*");
+                    mCoverPicker.launch(intent);
+                }
+            });
+        }
 
         return builder.create();
     }
@@ -499,5 +627,117 @@ public class GameSettingsDialogFragment extends DialogFragment {
             if (ini.exists()) ini.delete();
         } catch (Throwable ignored) {
         }
+    }
+    
+    private void importCustomCover(Context ctx, Uri sourceUri, String gameSerial) throws Exception {
+        // Load the image
+        android.content.ContentResolver cr = ctx.getContentResolver();
+        java.io.InputStream in = cr.openInputStream(sourceUri);
+        if (in == null) throw new Exception("Cannot open image");
+        
+        android.graphics.Bitmap originalBitmap = android.graphics.BitmapFactory.decodeStream(in);
+        in.close();
+        if (originalBitmap == null) throw new Exception("Invalid image format");
+        
+        // Resize to standard PS2 cover dimensions (567x878)
+        final int TARGET_WIDTH = 567;
+        final int TARGET_HEIGHT = 878;
+        android.graphics.Bitmap resizedBitmap = android.graphics.Bitmap.createScaledBitmap(
+            originalBitmap, TARGET_WIDTH, TARGET_HEIGHT, true);
+        originalBitmap.recycle();
+        
+        // Save to both locations
+        String fileName = gameSerial + ".png";
+        
+        // Save to internal storage
+        java.io.File baseDir = ctx.getExternalFilesDir("covers");
+        if (baseDir == null) baseDir = new java.io.File(ctx.getFilesDir(), "covers");
+        if (!baseDir.exists()) baseDir.mkdirs();
+        java.io.File outFile = new java.io.File(baseDir, fileName);
+        java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile);
+        resizedBitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, fos);
+        fos.flush();
+        fos.close();
+        
+        // Save to SAF location if set
+        android.net.Uri dataRoot = SafManager.getDataRootUri(ctx);
+        if (dataRoot != null) {
+            try {
+                // Delete existing if present
+                androidx.documentfile.provider.DocumentFile existing = SafManager.getChild(ctx, new String[]{"covers"}, fileName);
+                if (existing != null && existing.exists()) {
+                    existing.delete();
+                }
+                
+                // Create new file
+                androidx.documentfile.provider.DocumentFile target = SafManager.createChild(ctx, new String[]{"covers"}, fileName, "image/png");
+                if (target != null) {
+                    java.io.OutputStream os = cr.openOutputStream(target.getUri(), "w");
+                    if (os != null) {
+                        resizedBitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, os);
+                        os.flush();
+                        os.close();
+                    }
+                }
+            } catch (Exception e) {
+                android.util.Log.w("GameSettings", "Failed to save to SAF: " + e.getMessage());
+            }
+        }
+        
+        resizedBitmap.recycle();
+    }
+    
+    private void deleteCustomCover(Context ctx, String gameSerial) {
+        if (gameSerial == null || gameSerial.isEmpty()) {
+            android.widget.Toast.makeText(ctx, "Cannot delete cover: serial unknown", android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        new Thread(() -> {
+            try {
+                String fileName = gameSerial + ".png";
+                boolean deleted = false;
+                
+                // Delete from SAF location
+                androidx.documentfile.provider.DocumentFile existing = SafManager.getChild(ctx, new String[]{"covers"}, fileName);
+                if (existing != null && existing.exists()) {
+                    deleted = existing.delete();
+                }
+                
+                // Clear custom cover flag
+                ctx.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("custom_cover:" + gameSerial, false)
+                    .apply();
+                
+                // Clear Glide cache
+                try {
+                    com.bumptech.glide.Glide.get(ctx).clearDiskCache();
+                } catch (Throwable ignored) {}
+                
+                // Show result on UI thread
+                final boolean success = deleted;
+                if (getActivity() != null && !getActivity().isFinishing()) {
+                    getActivity().runOnUiThread(() -> {
+                        try {
+                            com.bumptech.glide.Glide.get(ctx).clearMemory();
+                        } catch (Throwable ignored) {}
+                        
+                        if (success) {
+                            android.widget.Toast.makeText(ctx, "Custom cover deleted for " + gameSerial, android.widget.Toast.LENGTH_SHORT).show();
+                        } else {
+                            android.widget.Toast.makeText(ctx, "No custom cover found to delete", android.widget.Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                android.util.Log.e("GameSettings", "Error deleting custom cover: " + e.getMessage(), e);
+                if (getActivity() != null && !getActivity().isFinishing()) {
+                    getActivity().runOnUiThread(() -> {
+                        android.widget.Toast.makeText(ctx, "Failed to delete cover: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
+                    });
+                }
+            }
+        }).start();
     }
 }

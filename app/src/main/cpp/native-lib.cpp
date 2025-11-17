@@ -1378,7 +1378,95 @@ Java_com_izzy2lost_psx2_NativeApp_getImageSlot(JNIEnv *env, jclass clazz, jint p
 
 void Host::CommitBaseSettingChanges()
 {
-    // nothing to save, we're all in memory
+    // Save achievements settings to Android SharedPreferences
+    // This is called after login to persist the token
+    
+    auto lock = Host::GetSettingsLock();
+    SettingsInterface* si = Host::GetSettingsInterface();
+    if (!si)
+    {
+        __android_log_print(ANDROID_LOG_ERROR, "PCSX2", "No settings interface available");
+        return;
+    }
+
+    // Get achievements credentials from settings
+    std::string username = si->GetStringValue("Achievements", "Username", "");
+    std::string token = si->GetStringValue("Achievements", "Token", "");
+    std::string loginTimestamp = si->GetStringValue("Achievements", "LoginTimestamp", "");
+
+    if (username.empty() && token.empty())
+    {
+        // Nothing to save
+        return;
+    }
+
+    __android_log_print(ANDROID_LOG_INFO, "PCSX2", "Saving achievements credentials to SharedPreferences");
+    
+    // Call the Java method to save to SharedPreferences
+    // We'll use JNI to call NativeApp.saveAchievementsCredentials()
+    JavaVM* jvm = AchievementsJNI::GetJavaVM();
+    if (!jvm)
+    {
+        __android_log_print(ANDROID_LOG_ERROR, "PCSX2", "JavaVM not available");
+        return;
+    }
+
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    
+    // Get JNI environment
+    if (jvm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK)
+    {
+        // Try to attach current thread
+        if (jvm->AttachCurrentThread(&env, nullptr) == JNI_OK)
+        {
+            attached = true;
+        }
+        else
+        {
+            __android_log_print(ANDROID_LOG_ERROR, "PCSX2", "Failed to attach thread to JVM");
+            return;
+        }
+    }
+
+    // Find the NativeApp class and saveAchievementsCredentials method
+    jclass nativeAppClass = env->FindClass("com/izzy2lost/psx2/NativeApp");
+    if (nativeAppClass)
+    {
+        jmethodID saveMethod = env->GetStaticMethodID(nativeAppClass, "saveAchievementsCredentials",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+        if (saveMethod)
+        {
+            jstring jUsername = env->NewStringUTF(username.c_str());
+            jstring jToken = env->NewStringUTF(token.c_str());
+            jstring jTimestamp = env->NewStringUTF(loginTimestamp.c_str());
+            
+            env->CallStaticVoidMethod(nativeAppClass, saveMethod, jUsername, jToken, jTimestamp);
+            
+            env->DeleteLocalRef(jUsername);
+            env->DeleteLocalRef(jToken);
+            env->DeleteLocalRef(jTimestamp);
+            
+            __android_log_print(ANDROID_LOG_INFO, "PCSX2", "Achievements credentials saved successfully");
+        }
+        else
+        {
+            __android_log_print(ANDROID_LOG_ERROR, "PCSX2", "Could not find saveAchievementsCredentials method");
+            env->ExceptionClear();
+        }
+        env->DeleteLocalRef(nativeAppClass);
+    }
+    else
+    {
+        __android_log_print(ANDROID_LOG_ERROR, "PCSX2", "Could not find NativeApp class");
+        env->ExceptionClear();
+    }
+
+    // Detach thread if we attached it
+    if (attached)
+    {
+        jvm->DetachCurrentThread();
+    }
 }
 
 void Host::LoadSettings(SettingsInterface& si, std::unique_lock<std::mutex>& lock)

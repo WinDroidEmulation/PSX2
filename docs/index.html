@@ -5,32 +5,101 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PSX2 - PlayStation 2 Emulator</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 800px;
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 900px;
             margin: 0 auto;
             padding: 2rem;
-            line-height: 1.6;
-            background-color: #f8f9fa;
         }
-        .container {
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
+        
         .header {
             text-align: center;
-            margin-bottom: 2rem;
+            margin-bottom: 3rem;
+            padding: 3rem 2rem;
+            background: rgba(0, 255, 200, 0.1);
+            border: 3px solid #00ffc8;
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(0, 255, 200, 0.4);
         }
+        
         .header h1 {
-            color: #333;
+            font-size: 3.5rem;
+            color: #00ffc8;
+            text-shadow: 0 0 20px #00ffc8, 0 0 40px rgba(0, 255, 200, 0.5);
             margin-bottom: 0.5rem;
+            font-weight: bold;
+            letter-spacing: 3px;
         }
+        
         .header p {
-            color: #666;
-            font-size: 1.2rem;
+            color: #00ffc8;
+            font-size: 1.3rem;
+            opacity: 0.9;
+            text-shadow: 0 0 10px #00ffc8;
         }
+        
+        .description {
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #00ffc8;
+            border-radius: 4px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: inset 0 0 10px rgba(0, 255, 200, 0.1);
+        }
+        
+        .description p {
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            line-height: 1.8;
+        }
+        
+        .features {
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #00ffc8;
+            border-radius: 4px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: inset 0 0 10px rgba(0, 255, 200, 0.1);
+        }
+        
+        .features h2 {
+            color: #00ffc8;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+            text-shadow: 0 0 10px #00ffc8;
+        }
+        
+        .features ul {
+            list-style: none;
+            margin-left: 0;
+        }
+        
+        .features li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+        
+        .features li:before {
+            content: "▶";
+            position: absolute;
+            left: 0;
+            color: #00ffc8;
+        }
+        
         .links {
             display: flex;
             flex-wrap: wrap;
@@ -38,57 +107,111 @@
             justify-content: center;
             margin: 2rem 0;
         }
+        
         .link-button {
             display: inline-block;
-            padding: 0.75rem 1.5rem;
-            background-color: #007bff;
-            color: white;
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, #00ffc8, #00cc99);
+            color: #1a1a2e;
             text-decoration: none;
-            border-radius: 5px;
-            transition: background-color 0.3s;
+            border-radius: 4px;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 0 15px rgba(0, 255, 200, 0.5);
+            border: 2px solid #00ffc8;
         }
+        
         .link-button:hover {
-            background-color: #0056b3;
+            box-shadow: 0 0 25px rgba(0, 255, 200, 0.8);
+            transform: translateY(-3px);
+            background: linear-gradient(135deg, #00ffdd, #00dd99);
         }
+        
         .link-button.secondary {
-            background-color: #6c757d;
+            background: rgba(0, 255, 200, 0.1);
+            color: #00ffc8;
+            border: 2px solid #00ffc8;
         }
+        
         .link-button.secondary:hover {
-            background-color: #545b62;
+            background: rgba(0, 255, 200, 0.2);
+            box-shadow: 0 0 25px rgba(0, 255, 200, 0.8);
         }
-        .description {
-            margin: 2rem 0;
-            color: #555;
-        }
+        
         .footer {
             text-align: center;
+            padding: 2rem;
+            border-top: 2px solid #00ffc8;
             margin-top: 2rem;
-            padding-top: 2rem;
-            border-top: 1px solid #eee;
-            color: #666;
+        }
+        
+        .footer p {
+            margin-bottom: 0.5rem;
+        }
+        
+        .footer a {
+            color: #00ffc8;
+            text-decoration: none;
+            margin: 0 0.5rem;
+            transition: all 0.3s;
+        }
+        
+        .footer a:hover {
+            text-shadow: 0 0 10px #00ffc8;
+        }
+        
+        .retro-badge {
+            display: inline-block;
+            background: #00ffc8;
+            color: #1a1a2e;
+            padding: 0.25rem 0.75rem;
+            border-radius: 2px;
+            font-weight: bold;
             font-size: 0.9rem;
+            margin-left: 0.5rem;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>PSX2</h1>
+            <h1>PSX2 <span class="retro-badge">RETRO</span></h1>
             <p>PlayStation 2 Emulator for Mobile</p>
         </div>
         
         <div class="description">
-            <p>PSX2 is a powerful PlayStation 2 emulator that allows you to play your favorite PS2 games on mobile devices. Experience classic gaming with enhanced performance and modern convenience.</p>
+            <p>PSX2 is a powerful PlayStation 2 emulator that brings your favorite PS2 games to mobile devices. Experience classic gaming with enhanced performance, modern convenience, and authentic retro vibes.</p>
+            <p>Built on the legendary PCSX2 emulator and optimized for ARM64 Android devices, PSX2 delivers high compatibility and smooth gameplay.</p>
+        </div>
+        
+        <div class="features">
+            <h2>Key Features</h2>
+            <ul>
+                <li>High Compatibility - Play thousands of PS2 games</li>
+                <li>Enhanced Graphics - Upscaling, texture filtering, and modern rendering</li>
+                <li>Multiple Formats - ISO, CHD, CSO, ZSO, and compressed formats</li>
+                <li>Touch Controls - Intuitive on-screen gamepad with customizable layout</li>
+                <li>External Controllers - Full support for Bluetooth and USB gamepads</li>
+                <li>Save States - Quick save and load functionality</li>
+                <li>Game Covers - Automatic cover art downloading and display</li>
+                <li>Per-Game Settings - Individual configuration for optimal performance</li>
+            </ul>
         </div>
         
         <div class="links">
             <a href="https://github.com/izzy2lost/PSX2" class="link-button">View on GitHub</a>
+            <a href="https://play.google.com/store/apps/details?id=com.izzy2lost.psx2" class="link-button">Download on Play Store</a>
+            <a href="license.html" class="link-button secondary">License</a>
             <a href="privacy-policy.html" class="link-button secondary">Privacy Policy</a>
         </div>
         
         <div class="footer">
             <p>© 2025 PSX2. Licensed under GPL-3.0.</p>
-            <p>Contact: <a href="mailto:izzynochill@gmail.com">izzynochill@gmail.com</a></p>
+            <p>
+                <a href="https://github.com/izzy2lost/PSX2">GitHub</a> |
+                <a href="mailto:izzynochill@gmail.com">Contact</a>
+            </p>
+            <p style="margin-top: 1rem; opacity: 0.7; font-size: 0.9rem;">PlayStation and PlayStation 2 are trademarks of Sony Interactive Entertainment.</p>
         </div>
     </div>
 </body>

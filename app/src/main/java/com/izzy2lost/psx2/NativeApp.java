@@ -168,6 +168,64 @@ public class NativeApp {
     public static native void achievementsShutdown();
     public static native Achievement[] achievementsGetAchievementList();
     public static native void achievementsSetHardcoreMode(boolean enabled);
+    public static native void achievementsLoginWithToken(String username, String token);
+
+    // Save achievements credentials to SharedPreferences (called from native code)
+    public static void saveAchievementsCredentials(String username, String token, String loginTimestamp) {
+        Context context = getContext();
+        if (context == null) {
+            android.util.Log.e("Achievements", "Cannot save credentials: context is null");
+            return;
+        }
+        
+        android.content.SharedPreferences prefs = context.getSharedPreferences("RetroAchievements", Context.MODE_PRIVATE);
+        android.content.SharedPreferences.Editor editor = prefs.edit();
+        editor.putString("username", username);
+        editor.putString("token", token);
+        editor.putString("login_timestamp", loginTimestamp);
+        editor.apply();
+        
+        android.util.Log.i("Achievements", "Credentials saved: username=" + username + ", has_token=" + (!token.isEmpty()));
+    }
+
+    // Load achievements credentials from SharedPreferences and attempt auto-login
+    public static void loadAndLoginAchievements() {
+        Context context = getContext();
+        if (context == null) {
+            android.util.Log.e("Achievements", "Cannot load credentials: context is null");
+            return;
+        }
+        
+        android.content.SharedPreferences prefs = context.getSharedPreferences("RetroAchievements", Context.MODE_PRIVATE);
+        boolean enabled = prefs.getBoolean("enabled", false);
+        
+        if (!enabled) {
+            android.util.Log.d("Achievements", "Achievements not enabled, skipping auto-login");
+            return;
+        }
+        
+        String username = prefs.getString("username", "");
+        String token = prefs.getString("token", "");
+        
+        if (username.isEmpty() || token.isEmpty()) {
+            android.util.Log.d("Achievements", "No saved credentials found");
+            return;
+        }
+        
+        android.util.Log.i("Achievements", "Attempting auto-login with saved token for user: " + username);
+        
+        // Initialize achievements system first
+        new Thread(() -> {
+            try {
+                achievementsInitialize();
+                Thread.sleep(500); // Give it time to initialize
+                achievementsLoginWithToken(username, token);
+                android.util.Log.i("Achievements", "Auto-login initiated");
+            } catch (Exception e) {
+                android.util.Log.e("Achievements", "Auto-login failed: " + e.getMessage());
+            }
+        }).start();
+    }
 
 	public static native void onNativeSurfaceCreated();
 	public static native void onNativeSurfaceChanged(Surface surface, int w, int h);

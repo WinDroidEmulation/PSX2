@@ -282,7 +282,7 @@ public class AchievementsDialogFragment extends DialogFragment {
         editor.putString(PREF_USERNAME, username);
         editor.putBoolean(PREF_REMEMBER_ME, rememberMe);
         
-        // Save password only if remember me is checked
+        // Save password only if remember me is checked (for fallback)
         if (rememberMe) {
             editor.putString(PREF_SAVED_PASSWORD, password);
         } else {
@@ -295,6 +295,9 @@ public class AchievementsDialogFragment extends DialogFragment {
             android.util.Log.d("Achievements", "Calling native login...");
             NativeApp.achievementsLogin(username, password);
             android.util.Log.d("Achievements", "Native login call completed");
+            
+            // The token will be automatically saved by Host::CommitBaseSettingChanges()
+            // which is called from the native login callback
             
             // Wait a bit for the login to process
             try {
@@ -309,7 +312,7 @@ public class AchievementsDialogFragment extends DialogFragment {
                 android.util.Log.d("Achievements", "After login - isActive: " + isActive);
                 
                 if (isActive) {
-                    Toast.makeText(requireContext(), "Login successful!", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(requireContext(), "Login successful! Token saved for auto-login.", Toast.LENGTH_SHORT).show();
                 } else {
                     Toast.makeText(requireContext(), "Login may have failed - check logs", Toast.LENGTH_LONG).show();
                 }
@@ -323,9 +326,11 @@ public class AchievementsDialogFragment extends DialogFragment {
     private void performLogout() {
         NativeApp.achievementsLogout();
         
-        // Clear saved password on logout
+        // Clear saved credentials including token
         getPrefs().edit()
             .remove(PREF_SAVED_PASSWORD)
+            .remove("token")
+            .remove("login_timestamp")
             .putBoolean(PREF_REMEMBER_ME, false)
             .apply();
         

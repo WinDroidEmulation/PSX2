@@ -51,7 +51,14 @@
             android:textColor="@color/md_theme_tertiaryFixedDim"
             android:layout_marginBottom="8dp"/>
 
-
+        <!-- Custom Cover Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_set_custom_cover"
+            style="@style/PSX2.ElevatedTransparentButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Set Custom Cover"
+            android:layout_marginBottom="16dp" />
 
         <!-- Graphics Settings -->
         <TextView

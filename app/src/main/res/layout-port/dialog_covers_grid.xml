@@ -31,6 +31,16 @@
             android:padding="4dp"
             android:src="@drawable/menu_24px"
             app:tint="@color/brand_primary" />
+        
+        <ImageButton
+            android:id="@+id/btn_refresh"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Refresh"
+            android:padding="4dp"
+            android:src="@drawable/refresh_24px"
+            app:tint="@color/brand_primary" />
 
         <View
             android:layout_width="0dp"

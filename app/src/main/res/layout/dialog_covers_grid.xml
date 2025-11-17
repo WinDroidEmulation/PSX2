@@ -31,6 +31,16 @@
             android:padding="4dp"
             android:src="@drawable/menu_24px"
             app:tint="@color/brand_primary" />
+        
+        <ImageButton
+            android:id="@+id/btn_refresh"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Refresh"
+            android:padding="4dp"
+            android:src="@drawable/refresh_24px"
+            app:tint="@color/brand_primary" />
 
         <View
             android:layout_width="0dp"
@@ -61,20 +71,27 @@
             app:iconTint="@color/brand_primary"
             app:iconGravity="textStart"
             app:iconPadding="8dp"
-            app:iconSize="24dp" />        
+            app:iconSize="24dp" />
     </LinearLayout>
     <!-- Letters row removed -->
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recycler_covers"
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipe_refresh"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="0dp"
-        android:clipToPadding="false" />
+        android:layout_weight="1">
+        
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recycler_covers"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="0dp"
+            android:clipToPadding="false" />
+    
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
     <!-- Hint below covers grid: yellow bulb right next to text -->
     <LinearLayout

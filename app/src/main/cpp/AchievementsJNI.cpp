@@ -279,4 +279,9 @@ namespace AchievementsJNI
 		env->DeleteLocalRef(j_message);
 	}
 
+	JavaVM* GetJavaVM()
+	{
+		return s_jvm;
+	}
+
 } // namespace AchievementsJNI

@@ -7,6 +7,7 @@
 #include "rc_client.h"
 #include "pcsx2/Achievements.h"
 #include "pcsx2/Config.h"
+#include "pcsx2/Host.h"
 #include "common/Console.h"
 #include "common/Error.h"
 
@@ -239,6 +240,30 @@ Java_com_izzy2lost_psx2_NativeApp_achievementsSetHardcoreMode(JNIEnv* env, jclas
 	EmuConfig.Achievements.HardcoreMode = enabled;
 	
 	__android_log_print(ANDROID_LOG_INFO, "PCSX2Achievements", "Hardcore mode will apply on next game load");
+}
+
+JNIEXPORT void JNICALL
+Java_com_izzy2lost_psx2_NativeApp_achievementsLoginWithToken(JNIEnv* env, jclass clazz,
+	jstring username, jstring token)
+{
+	if (!username || !token)
+	{
+		__android_log_print(ANDROID_LOG_ERROR, "PCSX2Achievements", "Login with token called with null username or token");
+		return;
+	}
+
+	const char* username_str = env->GetStringUTFChars(username, nullptr);
+	const char* token_str = env->GetStringUTFChars(token, nullptr);
+
+	__android_log_print(ANDROID_LOG_INFO, "PCSX2Achievements", "Attempting token login for user: %s", username_str);
+
+	// Store credentials using Host functions
+	Host::SetBaseStringSettingValue("Achievements", "Username", username_str);
+	Host::SetBaseStringSettingValue("Achievements", "Token", token_str);
+	__android_log_print(ANDROID_LOG_INFO, "PCSX2Achievements", "Token login credentials set");
+
+	env->ReleaseStringUTFChars(username, username_str);
+	env->ReleaseStringUTFChars(token, token_str);
 }
 
 } // extern "C"

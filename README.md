@@ -1,10 +1,11 @@
-# PSX2 - PlayStation 2 Emulator for Android
+# 🎮 PSX2 - PlayStation 2 Emulator for Android
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://izzy2lost.github.io/PSX2/license.html)
 [![Android](https://img.shields.io/badge/Platform-Android-green.svg)](https://developer.android.com/)
 [![ARM64](https://img.shields.io/badge/Architecture-ARM64-orange.svg)](https://developer.arm.com/)
+[![GitHub](https://img.shields.io/badge/GitHub-izzy2lost%2FPSX2-black.svg)](https://github.com/izzy2lost/PSX2)
 
-PSX2 is a high-performance PlayStation 2 emulator for Android devices, bringing your favorite PS2 games to mobile platforms with enhanced graphics and modern features.
+**PSX2** is a high-performance PlayStation 2 emulator for Android devices, bringing your favorite PS2 games to mobile platforms with enhanced graphics and modern features. Experience authentic retro gaming on the go.
 
 ## 🎮 About
 
@@ -154,7 +155,7 @@ PSX2 aims for high compatibility with the PlayStation 2 library. Performance var
 
 ### License
 
-This project is licensed under the **GNU General Public License v3.0** - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GNU General Public License v3.0** - see the [LICENSE](LICENSE) file for details or view it on our [GitHub Pages](https://izzy2lost.github.io/PSX2/license.html).
 
 ### Third-Party Licenses
 
