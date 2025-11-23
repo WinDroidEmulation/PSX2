@@ -51,14 +51,36 @@
             android:textColor="@color/md_theme_tertiaryFixedDim"
             android:layout_marginBottom="8dp"/>
 
-        <!-- Custom Cover Button -->
+        <!-- Cover art management -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Cover Art"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:textColor="@color/brand_primary"
+            android:paddingBottom="8dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Set, replace, or remove the cover shown in the game grid."
+            android:textSize="12sp"
+            android:textColor="@color/md_theme_tertiaryFixedDim"
+            android:layout_marginBottom="8dp"/>
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_set_custom_cover"
             style="@style/PSX2.ElevatedTransparentButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Set Custom Cover"
-            android:layout_marginBottom="16dp" />
+            android:text="Manage Custom Cover"
+            android:textColor="@android:color/white"
+            android:layout_marginBottom="16dp"
+            app:icon="@drawable/image_24px"
+            app:iconGravity="textStart"
+            app:iconPadding="12dp"
+            app:iconTint="@android:color/white" />
 
         <!-- Graphics Settings -->
         <TextView
