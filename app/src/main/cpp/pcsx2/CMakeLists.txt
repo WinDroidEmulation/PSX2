@@ -1127,6 +1127,7 @@ if(ANDROID)
 		../AchievementsJNI.cpp
 		../AchievementsAndroid.cpp
 		../AchievementsNativeMethods.cpp
+		../AndroidDeviceDetection.cpp
 	)
 elseif(LINUX)
 	target_sources(PCSX2 PRIVATE

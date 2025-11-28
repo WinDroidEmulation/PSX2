@@ -6,6 +6,7 @@
 #include "GS/GSUtil.h"
 #include "MultiISA.h"
 #include "common/StringUtil.h"
+#include "common/Console.h"
 
 #include <array>
 
@@ -20,6 +21,10 @@
 #include <VersionHelpers.h>
 #include "GS/Renderers/DX11/D3D.h"
 #include <wil/com.h>
+#endif
+
+#ifdef __ANDROID__
+#include "AndroidDeviceDetection.h"
 #endif
 
 namespace {
@@ -213,6 +218,58 @@ GSRendererType GSUtil::GetPreferredRenderer()
 #elif defined(_WIN32)
 		// Use D3D device info to select renderer.
 		preferred_renderer = D3D::GetPreferredRenderer();
+#elif defined(__ANDROID__)
+		// Android: Detect GPU vendor and choose appropriate renderer
+		using namespace AndroidDeviceDetection;
+		GPUVendor vendor = DetectGPUVendor();
+		
+		if (vendor == GPUVendor::ARM)
+		{
+			// Mediatek/Mali GPUs: Prefer OpenGL over Vulkan
+			// Vulkan drivers on Mali are often buggy, especially on Mediatek
+			// OpenGL works but may have 2D graphics issues that need workarounds
+			Console.Warning("Mediatek/Mali GPU detected: Using OpenGL renderer (Vulkan has known issues)");
+#if defined(ENABLE_OPENGL)
+			preferred_renderer = GSRendererType::OGL;
+#elif defined(ENABLE_VULKAN)
+			// Fallback to Vulkan if OpenGL not available (but warn user)
+			Console.Error("OpenGL not available, falling back to Vulkan (may have issues on Mali)");
+			preferred_renderer = GSRendererType::VK;
+#else
+			preferred_renderer = GSRendererType::SW;
+#endif
+		}
+		else if (vendor == GPUVendor::Qualcomm)
+		{
+			// Snapdragon/Adreno GPUs: Prefer Vulkan (good driver support)
+			Console.WriteLn("Qualcomm/Adreno GPU detected: Using Vulkan renderer");
+#if defined(ENABLE_VULKAN)
+			preferred_renderer = GSRendererType::VK;
+#elif defined(ENABLE_OPENGL)
+			preferred_renderer = GSRendererType::OGL;
+#else
+			preferred_renderer = GSRendererType::SW;
+#endif
+		}
+		else
+		{
+			// Unknown vendor: Try Vulkan first, then OpenGL
+			Console.WriteLn("Unknown GPU vendor: Trying Vulkan renderer");
+#if defined(ENABLE_VULKAN)
+			if (GSDeviceVK::IsSuitableDefaultRenderer())
+				preferred_renderer = GSRendererType::VK;
+#endif
+			if (preferred_renderer == GSRendererType::Auto)
+			{
+#if defined(ENABLE_OPENGL)
+				preferred_renderer = GSRendererType::OGL;
+#elif defined(ENABLE_VULKAN)
+				preferred_renderer = GSRendererType::VK;
+#else
+				preferred_renderer = GSRendererType::SW;
+#endif
+			}
+		}
 #else
 		// Linux: Prefer Vulkan if the driver isn't buggy.
 #if defined(ENABLE_VULKAN)
