@@ -2,6 +2,15 @@ name: Build PSX2 APK
 
 on:
     workflow_dispatch:
+        inputs:
+            build_type:
+                description: 'Build type'
+                required: true
+                default: 'debug'
+                type: choice
+                options:
+                    - debug
+                    - release
 
 jobs:
     build:
@@ -21,11 +30,37 @@ jobs:
             - name: Make Gradle executable
               run: chmod +x ./gradlew
 
+            - name: Decode Keystore
+              if: github.event.inputs.build_type == 'release'
+              run: |
+                  echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/keystore.jks
+
+            - name: Create keystore.properties
+              if: github.event.inputs.build_type == 'release'
+              run: |
+                  echo "storeFile=${{ github.workspace }}/keystore.jks" > keystore.properties
+                  echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> keystore.properties
+                  echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> keystore.properties
+                  echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> keystore.properties
+
             - name: Build debug APK
+              if: github.event.inputs.build_type == 'debug'
               run: ./gradlew assembleDebug
 
+            - name: Build release APK
+              if: github.event.inputs.build_type == 'release'
+              run: ./gradlew assembleRelease
+
             - name: Upload debug APK artifact
+              if: github.event.inputs.build_type == 'debug'
               uses: actions/upload-artifact@v4
               with:
                   name: pcsx2-android-debug
                   path: ${{ env.MODULE }}/build/outputs/apk/debug/*.apk
+
+            - name: Upload release APK artifact
+              if: github.event.inputs.build_type == 'release'
+              uses: actions/upload-artifact@v4
+              with:
+                  name: pcsx2-android-release
+                  path: ${{ env.MODULE }}/build/outputs/apk/release/*.apk
