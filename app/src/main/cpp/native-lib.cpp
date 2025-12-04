@@ -204,10 +204,10 @@ Java_com_izzy2lost_psx2_NativeApp_initialize(JNIEnv *env, jclass clazz,
         si.SetBoolValue("InputSources", "SDL", true);
         si.SetBoolValue("InputSources", "XInput", false);
 
-        // Use Oboe audio backend for Android (low-latency audio)
+        // audio output by default on Android
         si.SetStringValue("SPU2/Output", "Backend", "Oboe");
-        si.SetIntValue("SPU2/Output", "BufferMS", 100); // 100ms buffer for stability
-        si.SetIntValue("SPU2/Output", "OutputLatencyMS", 20); // 20ms output latency
+        si.SetIntValue("SPU2/Output", "BufferMS", 150);
+        si.SetIntValue("SPU2/Output", "OutputLatencyMS", 40);
 
         // none of the bindings are going to resolve to anything
         Pad::ClearPortBindings(si, 0);

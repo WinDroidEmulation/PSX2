@@ -103,15 +103,38 @@ void SPU2::CreateOutputStream()
 	s_output_stream.reset();
 
 	Error error;
-    s_output_stream = AudioStream::CreateStream(EmuConfig.SPU2.Backend, sample_rate, EmuConfig.SPU2.StreamParameters,
+	const AudioBackend requested_backend = EmuConfig.SPU2.Backend;
+    s_output_stream = AudioStream::CreateStream(requested_backend, sample_rate, EmuConfig.SPU2.StreamParameters,
             EmuConfig.SPU2.DriverName.c_str(), EmuConfig.SPU2.DeviceName.c_str(), EmuConfig.SPU2.IsTimeStretchEnabled(), &error);
 	if (!s_output_stream)
 	{
-		Host::ReportErrorAsync("Error",
-			fmt::format("Failed to create or configure audio stream, falling back to null output. The error was:\n{}",
-				error.GetDescription()));
+#ifdef __ANDROID__
+		// If the requested backend fails on Android, try Oboe before falling back to null so we still get audio.
+		if (requested_backend != AudioBackend::Oboe)
+		{
+			Console.Warning("Audio backend {} failed ({}), retrying with Oboe.",
+				AudioStream::GetBackendName(requested_backend), error.GetDescription().c_str());
+			Error oboe_error;
+			s_output_stream = AudioStream::CreateStream(AudioBackend::Oboe, sample_rate, EmuConfig.SPU2.StreamParameters,
+				EmuConfig.SPU2.DriverName.c_str(), EmuConfig.SPU2.DeviceName.c_str(), EmuConfig.SPU2.IsTimeStretchEnabled(),
+				&oboe_error);
 
-		s_output_stream = AudioStream::CreateNullStream(sample_rate, EmuConfig.SPU2.StreamParameters.buffer_ms);
+			if (!s_output_stream)
+			{
+				Console.Warning("Oboe backend also failed ({}), falling back to null output.", oboe_error.GetDescription().c_str());
+				error = std::move(oboe_error); // present the most recent failure to the user
+			}
+		}
+#endif
+
+		if (!s_output_stream)
+		{
+			Host::ReportErrorAsync("Error",
+				fmt::format("Failed to create or configure audio stream, falling back to null output. The error was:\n{}",
+					error.GetDescription()));
+
+			s_output_stream = AudioStream::CreateNullStream(sample_rate, EmuConfig.SPU2.StreamParameters.buffer_ms);
+		}
 	}
 
 	s_output_stream->SetOutputVolume(volume);

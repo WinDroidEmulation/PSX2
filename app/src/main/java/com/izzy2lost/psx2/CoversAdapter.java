@@ -147,10 +147,10 @@ public class CoversAdapter extends RecyclerView.Adapter<CoversAdapter.VH> {
 
     private Object getPlaceholder() {
         // Try SAF resources/no-cover.png first
-        android.net.Uri dataRoot = SafManager.getDataRootUri(context);
-        if (dataRoot != null) {
+        androidx.documentfile.provider.DocumentFile root = SafManager.getDataRoot(context);
+        if (root != null && root.canRead()) {
             androidx.documentfile.provider.DocumentFile f = SafManager.getChild(context, new String[]{"resources"}, "no-cover.png");
-            if (f != null && f.exists()) return f.getUri();
+            if (f != null && f.exists() && f.length() > 0) return f.getUri();
         }
         // Then try app external files path
         File resDir = context.getExternalFilesDir("resources");

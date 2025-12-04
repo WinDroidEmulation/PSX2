@@ -112,13 +112,15 @@ bool OboeAudioStream::Open() {
     oboe::AudioStreamBuilder builder;
     builder.setDirection(oboe::Direction::Output);
     builder.setPerformanceMode(oboe::PerformanceMode::LowLatency);
-    builder.setSharingMode(oboe::SharingMode::Shared);
+    builder.setSharingMode(oboe::SharingMode::Exclusive);
     builder.setFormat(oboe::AudioFormat::I16);
     builder.setSampleRate(m_sample_rate);
-    builder.setChannelCount(m_output_channels==2 ? oboe::ChannelCount::Stereo : oboe::ChannelCount::Mono);
+    builder.setChannelCount(m_output_channels >= 2 ? oboe::ChannelCount::Stereo : oboe::ChannelCount::Mono);
     builder.setDeviceId(oboe::kUnspecified);
-    builder.setBufferCapacityInFrames(2048 * 2);
-    builder.setFramesPerDataCallback(2048);
+
+    const int32_t buffer_frames = static_cast<int32_t>(AudioStream::GetBufferSizeForMS(m_sample_rate, m_parameters.buffer_ms));
+    builder.setBufferCapacityInFrames(buffer_frames);
+    builder.setFramesPerDataCallback(AudioStream::CHUNK_SIZE);
     builder.setDataCallback(this);
     builder.setErrorCallback(this);
 
@@ -126,8 +128,20 @@ bool OboeAudioStream::Open() {
     oboe::Result result = builder.openStream(m_stream);
     if (result != oboe::Result::OK)
     {
-        Console.Error("(OboeMod) openStream() failed: %d", result);
-        return false;
+        Console.Error("(OboeMod) openStream() failed: %d (exclusive), retrying shared", result);
+        builder.setSharingMode(oboe::SharingMode::Shared);
+        result = builder.openStream(m_stream);
+        if (result != oboe::Result::OK)
+        {
+            Console.Error("(OboeMod) openStream() failed: %d (shared)", result);
+            return false;
+        }
+    }
+
+    // Try to request our desired buffer size; ignore failures.
+    if (m_stream)
+    {
+        m_stream->setBufferSizeInFrames(buffer_frames);
     }
 
     return true;
