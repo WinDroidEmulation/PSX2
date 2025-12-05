@@ -12,7 +12,7 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = 'com.izzy2lost.psx2'
     compileSdk = 36
-    ndkVersion = '28.2.13676358'
+    ndkVersion = '29.0.14206865'
 
     signingConfigs {
         release {
