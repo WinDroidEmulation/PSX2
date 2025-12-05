@@ -32,6 +32,8 @@ public class CoversAdapter extends RecyclerView.Adapter<CoversAdapter.VH> {
     private final OnItemLongClick onItemLongClick;
     private final int itemLayoutResId;
     private int overrideItemWidthPx = 0;
+    private Object cachedPlaceholder = null;
+    private boolean placeholderLoaded = false;
 
     public CoversAdapter(Context context, String[] titles, String[] coverUrls, String[] localPaths, OnItemClick click) {
         this(context, titles, coverUrls, localPaths, R.layout.item_cover, click, null);
@@ -116,7 +118,7 @@ public class CoversAdapter extends RecyclerView.Adapter<CoversAdapter.VH> {
 
         if (!loadedImage) {
             Glide.with(context)
-                    .load(getPlaceholder())
+                    .load(getCachedPlaceholder())
                     .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                     .fitCenter()
                     .placeholder(android.R.color.transparent)
@@ -145,17 +147,44 @@ public class CoversAdapter extends RecyclerView.Adapter<CoversAdapter.VH> {
         });
     }
 
-    private Object getPlaceholder() {
-        // Try SAF resources/no-cover.png first
-        androidx.documentfile.provider.DocumentFile root = SafManager.getDataRoot(context);
-        if (root != null && root.canRead()) {
-            androidx.documentfile.provider.DocumentFile f = SafManager.getChild(context, new String[]{"resources"}, "no-cover.png");
-            if (f != null && f.exists() && f.length() > 0) return f.getUri();
+    private Object getCachedPlaceholder() {
+        // Return cached placeholder if already loaded
+        if (placeholderLoaded) {
+            return cachedPlaceholder;
         }
-        // Then try app external files path
-        File resDir = context.getExternalFilesDir("resources");
-        File placeholder = (resDir != null) ? new File(resDir, "no-cover.png") : null;
-        if (placeholder != null && placeholder.exists() && placeholder.length() > 0) return placeholder;
+        
+        // Load placeholder on background thread to avoid blocking layout
+        placeholderLoaded = true;
+        new Thread(() -> {
+            try {
+                Object placeholder = loadPlaceholder();
+                if (placeholder != null) {
+                    cachedPlaceholder = placeholder;
+                }
+            } catch (Throwable ignored) {}
+        }).start();
+        
+        // Return default immediately while background thread loads
+        return R.drawable.psx2_logo2_fixed;
+    }
+
+    private Object loadPlaceholder() {
+        try {
+            // Try SAF resources/no-cover.png first
+            androidx.documentfile.provider.DocumentFile root = SafManager.getDataRoot(context);
+            if (root != null && root.canRead()) {
+                androidx.documentfile.provider.DocumentFile f = SafManager.getChild(context, new String[]{"resources"}, "no-cover.png");
+                if (f != null && f.exists() && f.length() > 0) return f.getUri();
+            }
+        } catch (Throwable ignored) {}
+        
+        try {
+            // Then try app external files path
+            File resDir = context.getExternalFilesDir("resources");
+            File placeholder = (resDir != null) ? new File(resDir, "no-cover.png") : null;
+            if (placeholder != null && placeholder.exists() && placeholder.length() > 0) return placeholder;
+        } catch (Throwable ignored) {}
+        
         return R.drawable.psx2_logo2_fixed;
     }
 
