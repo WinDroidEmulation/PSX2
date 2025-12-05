@@ -842,15 +842,11 @@ bool GSDeviceOGL::CheckFeatures(bool& buggy_pbo)
 			m_features.framebuffer_fetch = false;
 		}
 		
-		// Force texture barriers on Mali
-		if (!m_features.texture_barrier && has_texture_barrier)
+
+		// Force texture barriers OFF on Mali to use safe RT copies
+		if (m_features.texture_barrier)
 		{
-			Console.Warning("  - Enabling texture barriers (required for proper blending on Mali)");
-			m_features.texture_barrier = true;
-		}
-		else if (!has_texture_barrier)
-		{
-			// Keep barriers disabled so we fall back to safe RT copies instead of no-op barriers.
+			Console.Warning("  - Disabling texture barriers (to force safe RT copies for HUD)");
 			m_features.texture_barrier = false;
 		}
 		
