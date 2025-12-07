@@ -42,7 +42,7 @@ jobs:
           text = [line for line in text if not line.strip().startswith("target_os")]
           text.append("target_os = ['android']")
           gclient.write_text("\n".join(text) + "\n")
-PY
+          PY
 
       - name: Sync ANGLE dependencies (Android)
         run: |
