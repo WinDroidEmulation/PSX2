@@ -1,0 +1,76 @@
+name: Build ANGLE Vulkan Android libs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-angle-android:
+    name: Build ANGLE Vulkan (Android arm64)
+    runs-on: ubuntu-latest
+    env:
+      ANGLE_DIR: ${{ github.workspace }}/angle
+      DEPOT_TOOLS_WIN_TOOLCHAIN: 0
+      GCLIENT_PY3: 1
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 curl lsb-release build-essential
+
+      - name: Fetch depot_tools
+        run: |
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "${GITHUB_WORKSPACE}/depot_tools" >> $GITHUB_PATH
+
+      - name: Fetch ANGLE sources
+        run: |
+          mkdir -p "${ANGLE_DIR}"
+          cd "${ANGLE_DIR}"
+          fetch --nohooks angle
+
+      - name: Enable Android target_os in .gclient
+        run: |
+          cd "${ANGLE_DIR}"
+          python3 - <<'PY'
+from pathlib import Path
+
+gclient = Path(".gclient")
+text = gclient.read_text().splitlines()
+text = [line for line in text if not line.strip().startswith("target_os")]
+text.append("target_os = ['android']")
+gclient.write_text("\n".join(text) + "\n")
+PY
+
+      - name: Sync ANGLE dependencies (Android)
+        run: |
+          cd "${ANGLE_DIR}"
+          gclient sync --no-history --with_branch_heads --with_tags
+          gclient runhooks
+
+      - name: Install Linux build deps for Android
+        run: |
+          cd "${ANGLE_DIR}"
+          ./build/install-build-deps.sh --no-prompt --android
+
+      - name: Generate GN args (Vulkan release, arm64)
+        run: |
+          cd "${ANGLE_DIR}"
+          gn gen out/Android --args='target_os="android" target_cpu="arm64" angle_enable_vulkan=true is_component_build=false is_official_build=true is_debug=false'
+
+      - name: Build ANGLE Vulkan libraries
+        run: |
+          cd "${ANGLE_DIR}"
+          autoninja -C out/Android libEGL libGLESv2
+
+      - name: Upload ANGLE Vulkan libs
+        uses: actions/upload-artifact@v4
+        with:
+          name: angle-android-vulkan-arm64
+          path: |
+            ${{ env.ANGLE_DIR }}/out/Android/libEGL*.so
+            ${{ env.ANGLE_DIR }}/out/Android/libGLESv2*.so
+            ${{ env.ANGLE_DIR }}/out/Android/lib.unstripped/libEGL*.so
+            ${{ env.ANGLE_DIR }}/out/Android/lib.unstripped/libGLESv2*.so
