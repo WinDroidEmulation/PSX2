@@ -53,6 +53,8 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.activity.EdgeToEdge;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.core.view.WindowCompat;
 import androidx.core.graphics.Insets;
 
 import com.google.android.material.button.MaterialButton;
@@ -242,7 +244,7 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
         // Make immersive (hide status + navigation) and allow swipe to reveal temporarily
         Window w = getWindow();
         if (w == null) return;
-        
+
         // Allow drawing into display cutouts (notches) on API 28+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             WindowManager.LayoutParams lp = w.getAttributes();
@@ -274,6 +276,36 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
                     decor.setSystemUiVisibility(legacyFlags);
                 }
             });
+        }
+    }
+
+    private void applyEdgeToEdge() {
+        Window w = getWindow();
+        if (w == null) return;
+
+        // API 35+ recommends avoiding setStatusBarColor/setNavigationBarColor for edge-to-edge.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            WindowCompat.setDecorFitsSystemWindows(w, false);
+            WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(w, w.getDecorView());
+            if (controller != null) {
+                controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                // App is forced dark mode; keep bars non-light to avoid contrast issues.
+                controller.setAppearanceLightStatusBars(false);
+                controller.setAppearanceLightNavigationBars(false);
+            }
+        } else {
+            // Fallback to the androidx helper on older platforms
+            EdgeToEdge.enable(
+                this,
+                androidx.activity.SystemBarStyle.auto(
+                    android.graphics.Color.TRANSPARENT,
+                    android.graphics.Color.TRANSPARENT
+                ),
+                androidx.activity.SystemBarStyle.auto(
+                    android.graphics.Color.TRANSPARENT,
+                    android.graphics.Color.TRANSPARENT
+                )
+            );
         }
     }
     
@@ -432,20 +464,9 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
             androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES);
         
         super.onCreate(savedInstanceState);
-        
-        // Enable edge-to-edge for Android 15+ compatibility
-        // Use SystemBarStyle to avoid deprecated setStatusBarColor/setNavigationBarColor APIs
-        EdgeToEdge.enable(
-            this,
-            androidx.activity.SystemBarStyle.auto(
-                android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.TRANSPARENT
-            ),
-            androidx.activity.SystemBarStyle.auto(
-                android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.TRANSPARENT
-            )
-        );
+
+        // Edge-to-edge without deprecated status/nav color APIs (API 35+)
+        applyEdgeToEdge();
         
         // Hide action bar to improve immersive appearance
         if (getSupportActionBar() != null) {
