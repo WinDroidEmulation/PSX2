@@ -29,8 +29,8 @@ android {
         applicationId = "com.izzy2lost.psx2"
         minSdk = 26
         targetSdk = 36
-        versionCode 18
-        versionName "1.1.6"
+        versionCode 19
+        versionName "1.1.7"
         // APK
         base.archivesName = "PSX2_${versionCode}_${new Date().format('yyyyMMddHHmm')}"
 
@@ -105,7 +105,7 @@ android {
             excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/NOTICE', 'META-INF/NOTICE.txt']
         }
     }
-    buildToolsVersion = '36.0.0'
+    buildToolsVersion = '36.1.0'
 }
 
 dependencies {
