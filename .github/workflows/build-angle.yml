@@ -25,24 +25,12 @@ jobs:
           git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
           echo "${GITHUB_WORKSPACE}/depot_tools" >> $GITHUB_PATH
 
-      - name: Fetch ANGLE sources
+      - name: Configure gclient for ANGLE (main branch, Android)
         run: |
+          rm -rf "${ANGLE_DIR}"
           mkdir -p "${ANGLE_DIR}"
           cd "${ANGLE_DIR}"
-          fetch --nohooks angle
-
-      - name: Enable Android target_os in .gclient
-        run: |
-          cd "${ANGLE_DIR}"
-          python3 - <<'PY'
-          from pathlib import Path
-
-          gclient = Path(".gclient")
-          text = gclient.read_text().splitlines()
-          text = [line for line in text if not line.strip().startswith("target_os")]
-          text.append("target_os = ['android']")
-          gclient.write_text("\n".join(text) + "\n")
-          PY
+          gclient config --spec "solutions = [ { 'name': '.', 'url': 'https://chromium.googlesource.com/angle/angle.git', 'deps_file': 'DEPS', 'managed': False, 'custom_vars': {}, 'revision': 'origin/main' }, ]; target_os = ['android']"
 
       - name: Sync ANGLE dependencies (Android)
         run: |
