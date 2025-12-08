@@ -648,6 +648,10 @@ bool GSDeviceOGL::CheckFeatures(bool& buggy_pbo)
 	const std::string vendor_lower = to_lower(vendor_str);
 	const std::string renderer_lower = to_lower(renderer_str);
 	
+	// Detect Mali GPU
+	bool vendor_id_arm_mali = (vendor_lower.find("arm") != std::string::npos || 
+	                           renderer_lower.find("mali") != std::string::npos);
+	
 	if (vendor_lower.find("advanced micro devices") != std::string::npos ||
 		vendor_lower.find("ati technologies inc.") != std::string::npos ||
 		vendor_lower.find("ati") != std::string::npos)
@@ -664,6 +668,10 @@ bool GSDeviceOGL::CheckFeatures(bool& buggy_pbo)
 	{
 		Console.WriteLn(Color_StrongBlue, "GL: Intel GPU detected.");
 		//vendor_id_intel = true;
+	}
+	else if (vendor_id_arm_mali)
+	{
+		Console.WriteLn(Color_StrongYellow, "GL: ARM Mali GPU detected - applying workarounds");
 	}
 	GLint major_gl = 0;
 	GLint minor_gl = 0;
@@ -746,12 +754,31 @@ bool GSDeviceOGL::CheckFeatures(bool& buggy_pbo)
     } else {
         buggy_pbo = !GLAD_GL_EXT_buffer_storage;
     }
+	
+	// Mali GPU workarounds - force PBO off and disable problematic features
+	if (vendor_id_arm_mali)
+	{
+		Console.WriteLn(Color_StrongYellow, "GL: Applying Mali GPU workarounds:");
+		Console.WriteLn("  - Disabling framebuffer fetch");
+		Console.WriteLn("  - Enabling texture barriers");
+		Console.WriteLn("  - Disabling vertex shader expansion");
+		Console.WriteLn("  - Disabling PBO for texture uploads");
+		Console.WriteLn("  - Disabling PBO for texture downloads");
+		Console.WriteLn("  - Disabling point expand");
+		
+		buggy_pbo = true;
+		m_disable_download_pbo = true;
+		
+		Console.WriteLn("GL: Mali workarounds applied. Textures will use direct upload path.");
+	}
+	
 	if (buggy_pbo)
 		Console.Warning("GL: Not using PBOs for texture uploads because buffer_storage is unavailable.");
 
 	// Give the user the option to disable PBO usage for downloads.
 	// Most drivers seem to be faster with PBO.
-	m_disable_download_pbo = Host::GetBoolSettingValue("EmuCore/GS", "DisableGLDownloadPBO", false);
+	if (!vendor_id_arm_mali)
+		m_disable_download_pbo = Host::GetBoolSettingValue("EmuCore/GS", "DisableGLDownloadPBO", false);
 	if (m_disable_download_pbo)
 		Console.Warning("GL: Not using PBOs for texture downloads, this may reduce performance.");
 
@@ -760,6 +787,14 @@ bool GSDeviceOGL::CheckFeatures(bool& buggy_pbo)
 	m_features.primitive_id = true;
 
 	m_features.framebuffer_fetch = GLAD_GL_EXT_shader_framebuffer_fetch;
+	
+	// Disable framebuffer fetch on Mali - causes 2D graphics issues
+	if (vendor_id_arm_mali && m_features.framebuffer_fetch)
+	{
+		Console.WriteLn("GL: Disabling framebuffer fetch on Mali GPU (causes rendering issues)");
+		m_features.framebuffer_fetch = false;
+	}
+	
 	if (m_features.framebuffer_fetch && GSConfig.DisableFramebufferFetch)
 	{
 		Host::AddOSDMessage(

@@ -48,4 +48,8 @@ protected:
 	EGLConfig m_config = {};
 
 	bool m_supports_surfaceless = false;
+#ifdef __ANDROID__
+	bool m_tried_angle_display = false;
+	bool m_used_angle_display = false;
+#endif
 };

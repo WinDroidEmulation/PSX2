@@ -1,94 +1,93 @@
 package com.izzy2lost.psx2;
 
 import android.app.Dialog;
-import android.os.Build;
+import android.content.Context;
 import android.os.Bundle;
+import android.view.LayoutInflater;
 import android.view.View;
-import android.view.Gravity;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.DialogFragment;
+import androidx.recyclerview.widget.RecyclerView;
+import androidx.viewpager2.widget.ViewPager2;
 
 import com.google.android.material.button.MaterialButton;
-import androidx.core.content.ContextCompat;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 
 public class SetupWizardDialogFragment extends DialogFragment {
     public static SetupWizardDialogFragment newInstance() { return new SetupWizardDialogFragment(); }
 
-    private MaterialButton btnData;
-    private MaterialButton btnGames;
-    private MaterialButton btnBios;
-    private MaterialButton btnDone;
-    private TextView titleView;
-    private TextView hintView;
-    private Runnable mPeriodicCheck;
-    private boolean mHasAutoAdvanced = false;
-    
-    // Method to detect if this is a lower-end device
-    private boolean isLowerEndDevice() {
-        try {
-            // Check available memory
-            Runtime runtime = Runtime.getRuntime();
-            long maxMemory = runtime.maxMemory();
-            long totalMemory = runtime.totalMemory();
-            long freeMemory = runtime.freeMemory();
-            long availableMemory = maxMemory - totalMemory + freeMemory;
-            
-            // Consider device lower-end if it has less than 512MB available memory
-            boolean lowMemory = availableMemory < 512 * 1024 * 1024; // 512MB
-            
-            // Check Android version - older versions might be on older hardware
-            boolean oldAndroid = Build.VERSION.SDK_INT < Build.VERSION_CODES.P; // Android 9+
-            
-            // Check number of CPU cores
-            int cpuCores = runtime.availableProcessors();
-            boolean fewCores = cpuCores <= 2; // 2 or fewer cores
-            
-            android.util.Log.d("SetupWizard", "Device specs - Available Memory: " +
-                             (availableMemory / 1024 / 1024) + "MB, " +
-                             "CPU Cores: " + cpuCores +
-                             ", Android API: " + Build.VERSION.SDK_INT);
-            
-            return lowMemory || (oldAndroid && fewCores);
-        } catch (Exception e) {
-            android.util.Log.w("SetupWizard", "Error detecting device capabilities: " + e.getMessage());
-            return false; // Assume not lower-end if we can't detect
-        }
+    private ViewPager2 pager;
+    private MaterialButton btnNext;
+    private LinearLayout indicatorContainer;
+    private TextView tvStep;
+    private TextView tvSubtitle;
+    private Runnable periodicCheck;
+
+    private final List<SetupStep> steps = Arrays.asList(
+            new SetupStep(StepType.DATA, R.drawable.data_table_24px, "Data folder", "Pick a writable PSX2 data folder for saves, states, and config.", "Choose data"),
+            new SetupStep(StepType.GAMES, R.drawable.stadia_controller_24px, "Games library", "Point PSX2 to your games folder so covers and sorting work.", "Choose games"),
+            new SetupStep(StepType.BIOS, R.drawable.memory_24px, "BIOS files", "Import your console BIOS so games can boot.", "Import BIOS")
+    );
+
+    private SetupPagerAdapter adapter;
+
+    private enum StepType {
+        DATA, GAMES, BIOS
     }
-    
-    // Method to get appropriate timeout based on device capabilities
-    private long getTimeoutForDevice(long baseTimeout, long lowerEndTimeout) {
-        return isLowerEndDevice() ? lowerEndTimeout : baseTimeout;
+
+    private static class SetupStep {
+        final StepType type;
+        final int iconRes;
+        final String title;
+        final String description;
+        final String ctaText;
+
+        SetupStep(StepType t, int iconRes, String title, String description, String cta) {
+            this.type = t;
+            this.iconRes = iconRes;
+            this.title = title;
+            this.description = description;
+            this.ctaText = cta;
+        }
     }
 
     @NonNull
     @Override
     public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
-        // Notify MainActivity that this dialog is opening
         try {
             if (getActivity() instanceof MainActivity) {
                 ((MainActivity) getActivity()).onDialogOpened();
             }
         } catch (Throwable ignored) {}
-        
+
         Dialog d = new Dialog(requireContext(), R.style.PSX2_FullScreenDialog);
-        d.setContentView(buildContent());
-        
-        // Resume game when dialog is dismissed
+        View content = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_setup_intro, null);
+        d.setContentView(content);
+
+        bindViews(content);
+        setupPager();
+        renderIndicators(0);
+        updateHeader(0);
+        updateNextButtonState(0);
+
         d.setOnDismissListener(dialog -> {
-            android.util.Log.d("SetupWizardDialog", "Setup wizard dialog dismissed");
-            // Use the global dialog tracking system
             if (getActivity() instanceof MainActivity) {
                 ((MainActivity) getActivity()).onDialogClosed();
             }
         });
-        
+
         return d;
     }
 
@@ -96,21 +95,16 @@ public class SetupWizardDialogFragment extends DialogFragment {
     public void onResume() {
         super.onResume();
         try { ((MainActivity) requireActivity()).setSetupWizardActive(true); } catch (Throwable ignored) {}
-        // Refresh state (in case a step completed while this dialog was covered by a picker)
-        try { 
-            updateUi();
-            // Auto-advance if all steps are complete
-            checkAndAutoAdvance();
-        } catch (Throwable ignored) {}
-        
-        // Start periodic checking for BIOS files (in case onResume doesn't catch the import)
+        hideSystemUI();
+        refreshAll();
         startPeriodicCheck();
     }
-    
+
     @Override
     public void onPause() {
         super.onPause();
         stopPeriodicCheck();
+        showSystemUI();
     }
 
     @Override
@@ -119,123 +113,202 @@ public class SetupWizardDialogFragment extends DialogFragment {
         try { ((MainActivity) requireActivity()).setSetupWizardActive(false); } catch (Throwable ignored) {}
     }
 
-    private View buildContent() {
-        final LinearLayout root = new LinearLayout(requireContext());
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
-        int pad = (int)(24 * getResources().getDisplayMetrics().density);
-        root.setPadding(pad, pad, pad, pad);
-        root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        // Use theme background
-        root.setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.md_theme_surface));
+    private void bindViews(View root) {
+        pager = root.findViewById(R.id.setup_pager);
+        btnNext = root.findViewById(R.id.btn_next);
+        indicatorContainer = root.findViewById(R.id.indicator_container);
+        tvStep = root.findViewById(R.id.tv_step);
+        tvSubtitle = root.findViewById(R.id.tv_subtitle);
 
-        titleView = new TextView(requireContext());
-        titleView.setText("Welcome! Let's set up PSX2");
-        titleView.setTextSize(26f);
-        titleView.setGravity(Gravity.CENTER_HORIZONTAL);
-        titleView.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        titleView.setTextColor(ContextCompat.getColor(requireContext(), R.color.md_theme_tertiaryFixedDim));
-        titleView.setTypeface(titleView.getTypeface(), android.graphics.Typeface.BOLD);
-        root.addView(titleView);
+        btnNext.setOnClickListener(v -> handleNextClick());
+    }
 
-        // Subtitle removed; using inline hint near the Done button instead.
+    private void setupPager() {
+        adapter = new SetupPagerAdapter(requireContext(), steps, new SetupPagerAdapter.StepListener() {
+            @Override
+            public boolean isComplete(StepType type) {
+                return isStepComplete(type);
+            }
 
-        int btnHeight = (int)(48 * getResources().getDisplayMetrics().density);
-
-        btnData = new MaterialButton(requireContext(), null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
-        btnData.setText("1) Choose Data Folder");
-        btnData.setMinimumHeight(btnHeight);
-        btnData.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
-        btnData.setIconPadding((int)(8 * getResources().getDisplayMetrics().density));
-        btnData.setOnClickListener(v -> {
-            MainActivity a = (MainActivity) requireActivity();
-            a.pickDataRootFolder();
-        });
-        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp1.topMargin = (int)(24 * getResources().getDisplayMetrics().density);
-        btnData.setLayoutParams(lp1);
-        root.addView(btnData);
-
-        btnGames = new MaterialButton(requireContext(), null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
-        btnGames.setText("2) Choose Games Folder");
-        btnGames.setMinimumHeight(btnHeight);
-        btnGames.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
-        btnGames.setIconPadding((int)(8 * getResources().getDisplayMetrics().density));
-        btnGames.setOnClickListener(v -> {
-            MainActivity a = (MainActivity) requireActivity();
-            a.pickGamesFolder();
-        });
-        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp2.topMargin = (int)(12 * getResources().getDisplayMetrics().density);
-        btnGames.setLayoutParams(lp2);
-        root.addView(btnGames);
-
-        btnBios = new MaterialButton(requireContext(), null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
-        btnBios.setText("3) Import BIOS Files");
-        btnBios.setMinimumHeight(btnHeight);
-        btnBios.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
-        btnBios.setIconPadding((int)(8 * getResources().getDisplayMetrics().density));
-        btnBios.setOnClickListener(v -> {
-            // Reuse existing BIOS prompt flow
-            MainActivity a = (MainActivity) requireActivity();
-            a.showBiosPrompt();
-        });
-        LinearLayout.LayoutParams lp3 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp3.topMargin = (int)(12 * getResources().getDisplayMetrics().density);
-        btnBios.setLayoutParams(lp3);
-        root.addView(btnBios);
-
-        btnDone = new MaterialButton(requireContext());
-        btnDone.setText("Done");
-        btnDone.setMinimumHeight(btnHeight);
-        btnDone.setOnClickListener(v -> {
-            if (isDataFolderPicked() && isGamesFolderPicked() && isBiosPresent()) {
-                requireContext().getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-                        .edit().putBoolean("first_run_done", true).apply();
-                MainActivity a = null;
-                try { a = (MainActivity) requireActivity(); a.setSetupWizardActive(false); } catch (Throwable ignored) {}
-                dismissAllowingStateLoss();
-                if (a != null) {
-                    // Use adaptive delay based on device capabilities
-                    // Don't auto-open games dialog after setup wizard
-                    // This prevents crashes when BIOS is still booting
-                    // User can open it manually via home button when ready
-                    android.util.Log.d("SetupWizard", "Setup complete - user can open games dialog via home button");
-                }
+            @Override
+            public void onAction(StepType type) {
+                triggerAction(type);
             }
         });
-        LinearLayout.LayoutParams lp4 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp4.topMargin = (int)(28 * getResources().getDisplayMetrics().density);
-        btnDone.setLayoutParams(lp4);
-        root.addView(btnDone);
-
-        // Inline hint below Done button
-        hintView = new TextView(requireContext());
-        hintView.setText("Complete all steps to finish.");
-        hintView.setTextSize(14f);
-        hintView.setGravity(Gravity.CENTER_HORIZONTAL);
-        hintView.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        hintView.setTextColor(ContextCompat.getColor(requireContext(), R.color.brand_primary));
-        hintView.setAlpha(0.9f);
-        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hintLp.topMargin = (int)(8 * getResources().getDisplayMetrics().density);
-        hintView.setLayoutParams(hintLp);
-        root.addView(hintView);
-
-        // Initialize state
-        updateUi();
-
-        return root;
+        pager.setAdapter(adapter);
+        pager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
+            @Override
+            public void onPageSelected(int position) {
+                super.onPageSelected(position);
+                renderIndicators(position);
+                updateHeader(position);
+                updateNextButtonState(position);
+            }
+        });
     }
 
-    private boolean isDataFolderPicked() {
-        return SafManager.getDataRootUri(requireContext()) != null;
+    private void handleNextClick() {
+        int current = pager.getCurrentItem();
+        boolean allDone = areAllStepsComplete();
+        if (current < steps.size() - 1) {
+            pager.setCurrentItem(current + 1, true);
+            return;
+        }
+        if (allDone) {
+            completeAndDismiss();
+        } else {
+            int target = firstIncompleteIndex();
+            if (target >= 0) {
+                pager.setCurrentItem(target, true);
+            }
+        }
     }
 
-    private boolean isGamesFolderPicked() {
-        String s = requireContext().getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-                .getString("games_folder_uri", null);
-        return s != null && !s.isEmpty();
+    private void triggerAction(StepType type) {
+        MainActivity a = (MainActivity) requireActivity();
+        switch (type) {
+            case DATA -> a.pickDataRootFolder();
+            case GAMES -> a.pickGamesFolder();
+            case BIOS -> a.showBiosPrompt();
+        }
+    }
+
+    private void renderIndicators(int activeIndex) {
+        indicatorContainer.removeAllViews();
+        int size = (int) (16 * getResources().getDisplayMetrics().density);
+        int margin = (int) (8 * getResources().getDisplayMetrics().density);
+        for (int i = 0; i < steps.size(); i++) {
+            View indicator = new View(requireContext());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
+            lp.setMargins(margin, 0, margin, 0);
+            indicator.setLayoutParams(lp);
+            indicator.setBackground(ContextCompat.getDrawable(requireContext(),
+                    i == activeIndex ? R.drawable.setup_indicator_active : R.drawable.setup_indicator_inactive));
+            indicatorContainer.addView(indicator);
+        }
+    }
+
+    private void updateHeader(int position) {
+        String stepLabel = String.format(Locale.getDefault(), "Step %d of %d", position + 1, steps.size());
+        tvStep.setText(stepLabel);
+        tvSubtitle.setText(steps.get(position).title);
+    }
+
+    private void updateNextButtonState(int position) {
+        boolean allDone = areAllStepsComplete();
+        boolean last = position == steps.size() - 1;
+        btnNext.setText(allDone ? "Start playing" : (last ? "Done" : "Next"));
+        btnNext.setEnabled(allDone || !last);
+    }
+
+    private void refreshAll() {
+        if (adapter != null) adapter.notifyDataSetChanged();
+        updateNextButtonState(pager != null ? pager.getCurrentItem() : 0);
+        if (areAllStepsComplete()) {
+            tryCompleteSoon();
+        }
+    }
+
+    private void startPeriodicCheck() {
+        stopPeriodicCheck();
+        View root = getView();
+        if (root != null) {
+            periodicCheck = new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        if (isAdded()) {
+                            refreshAll();
+                            if (getView() != null && !areAllStepsComplete()) {
+                                getView().postDelayed(this, 800);
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            };
+            root.postDelayed(periodicCheck, 800);
+        }
+    }
+
+    private void stopPeriodicCheck() {
+        View root = getView();
+        if (root != null && periodicCheck != null) {
+            root.removeCallbacks(periodicCheck);
+        }
+        periodicCheck = null;
+    }
+
+    private void completeAndDismiss() {
+        try {
+            requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                    .edit().putBoolean("first_run_done", true).apply();
+            MainActivity a = (MainActivity) requireActivity();
+            a.setSetupWizardActive(false);
+        } catch (Throwable ignored) {}
+        dismissAllowingStateLoss();
+    }
+
+    private void tryCompleteSoon() {
+        View decor = getDialog() != null && getDialog().getWindow() != null ? getDialog().getWindow().getDecorView() : null;
+        if (decor != null) {
+            decor.postDelayed(this::completeAndDismiss, 1200);
+        }
+    }
+
+    public void refreshUi() {
+        try {
+            refreshAll();
+        } catch (Throwable ignored) {}
+    }
+
+    private void hideSystemUI() {
+        try {
+            if (getDialog() != null && getDialog().getWindow() != null) {
+                View decorView = getDialog().getWindow().getDecorView();
+                decorView.setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_FULLSCREEN);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void showSystemUI() {
+        try {
+            if (getDialog() != null && getDialog().getWindow() != null) {
+                View decorView = getDialog().getWindow().getDecorView();
+                decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private boolean isStepComplete(StepType type) {
+        return switch (type) {
+            case DATA -> SafManager.getDataRootUri(requireContext()) != null;
+            case GAMES -> {
+                String s = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                        .getString("games_folder_uri", null);
+                yield s != null && !s.isEmpty();
+            }
+            case BIOS -> isBiosPresent();
+        };
+    }
+
+    private boolean areAllStepsComplete() {
+        for (SetupStep step : steps) {
+            if (!isStepComplete(step.type)) return false;
+        }
+        return true;
+    }
+
+    private int firstIncompleteIndex() {
+        for (int i = 0; i < steps.size(); i++) {
+            if (!isStepComplete(steps.get(i).type)) return i;
+        }
+        return -1;
     }
 
     private boolean isBiosPresent() {
@@ -245,20 +318,17 @@ public class SetupWizardDialogFragment extends DialogFragment {
             if (fs != null) {
                 for (File f : fs) {
                     if (f != null && f.isFile()) {
-                        String lower = f.getName().toLowerCase(java.util.Locale.ROOT);
-                        
-                        // Check for component ROM files (these have specific names)
-                        boolean isComponentSuffix = lower.endsWith(".rom0") || lower.endsWith(".rom1") || 
-                                                   lower.endsWith(".rom2") || lower.endsWith(".erom");
-                        boolean isBareComponent = lower.equals("rom0") || lower.equals("rom1") || 
-                                                 lower.equals("rom2") || lower.equals("erom");
-                        
+                        String lower = f.getName().toLowerCase(Locale.ROOT);
+
+                        boolean isComponentSuffix = lower.endsWith(".rom0") || lower.endsWith(".rom1") ||
+                                lower.endsWith(".rom2") || lower.endsWith(".erom");
+                        boolean isBareComponent = lower.equals("rom0") || lower.equals("rom1") ||
+                                lower.equals("rom2") || lower.equals("erom");
+
                         if (isComponentSuffix || isBareComponent) {
                             return true;
                         }
-                        
-                        // Accept any .bin or .rom file that's at least 256KB (likely a BIOS)
-                        // This covers renamed files and all regional variants
+
                         if ((lower.endsWith(".bin") || lower.endsWith(".rom")) && f.length() >= 256 * 1024) {
                             return true;
                         }
@@ -269,123 +339,75 @@ public class SetupWizardDialogFragment extends DialogFragment {
         return false;
     }
 
-    private void updateUi() {
-        boolean step1 = isDataFolderPicked();
-        boolean step2 = isGamesFolderPicked();
-        boolean step3 = isBiosPresent();
-
-        btnData.setText("1) Choose Data Folder");
-        btnGames.setText("2) Choose Games Folder");
-        btnBios.setText("3) Import BIOS Files");
-
-        btnData.setIcon(step1 ? ContextCompat.getDrawable(requireContext(), R.drawable.check_circle_24px) : null);
-        btnGames.setIcon(step2 ? ContextCompat.getDrawable(requireContext(), R.drawable.check_circle_24px) : null);
-        btnBios.setIcon(step3 ? ContextCompat.getDrawable(requireContext(), R.drawable.check_circle_24px) : null);
-
-        // Add theme accent to completed buttons
-        int themeAccent = ContextCompat.getColor(requireContext(), R.color.md_theme_tertiary);
-        int defaultColor = ContextCompat.getColor(requireContext(), R.color.md_theme_onSurface);
-        
-        btnData.setIconTint(step1 ? android.content.res.ColorStateList.valueOf(themeAccent) : null);
-        btnGames.setIconTint(step2 ? android.content.res.ColorStateList.valueOf(themeAccent) : null);
-        btnBios.setIconTint(step3 ? android.content.res.ColorStateList.valueOf(themeAccent) : null);
-
-        btnGames.setEnabled(step1);
-        btnBios.setEnabled(step1 && step2);
-        boolean doneEnabled = (step1 && step2 && step3);
-        btnDone.setEnabled(doneEnabled);
-        
-        // Style the Done button when ready
-        if (doneEnabled) {
-            btnDone.setBackgroundTintList(android.content.res.ColorStateList.valueOf(themeAccent));
-            btnDone.setTextColor(ContextCompat.getColor(requireContext(), R.color.md_theme_onTertiary));
-            if (hintView != null) {
-                hintView.setText("🎉 Ready to go! Tap Done to start.");
-                hintView.setTextColor(ContextCompat.getColor(requireContext(), R.color.md_theme_tertiaryFixedDim));
-            }
-        } else {
-            btnDone.setBackgroundTintList(null);
-            btnDone.setTextColor(defaultColor);
-            if (hintView != null) {
-                hintView.setText("Complete all steps to finish.");
-                hintView.setTextColor(ContextCompat.getColor(requireContext(), R.color.brand_primary));
-            }
+    private static class SetupPagerAdapter extends RecyclerView.Adapter<SetupPagerAdapter.VH> {
+        interface StepListener {
+            boolean isComplete(StepType type);
+            void onAction(StepType type);
         }
-        
-        if (hintView != null) hintView.setVisibility(View.VISIBLE);
 
-    }
+        private final Context ctx;
+        private final List<SetupStep> steps;
+        private final StepListener listener;
 
-    private void startPeriodicCheck() {
-        stopPeriodicCheck();
-        View root = getView();
-        if (root != null) {
-            mPeriodicCheck = new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        if (isAdded() && !mHasAutoAdvanced) {
-                            updateUi();
-                            checkAndAutoAdvance();
-                            // Keep checking every 500ms until auto-advance happens
-                            if (getView() != null && !mHasAutoAdvanced) {
-                                getView().postDelayed(this, 500);
-                            }
-                        }
-                    } catch (Throwable ignored) {}
-                }
-            };
-            root.postDelayed(mPeriodicCheck, 500);
+        SetupPagerAdapter(Context ctx, List<SetupStep> steps, StepListener listener) {
+            this.ctx = ctx;
+            this.steps = new ArrayList<>(steps);
+            this.listener = listener;
         }
-    }
-    
-    private void stopPeriodicCheck() {
-        View root = getView();
-        if (root != null && mPeriodicCheck != null) {
-            root.removeCallbacks(mPeriodicCheck);
-        }
-        mPeriodicCheck = null;
-    }
-    
-    // Public method to manually refresh UI (can be called from MainActivity after BIOS import)
-    public void refreshUi() {
-        try {
-            updateUi();
-            checkAndAutoAdvance();
-        } catch (Throwable ignored) {}
-    }
 
-    private void checkAndAutoAdvance() {
-        if (mHasAutoAdvanced) return; // Prevent multiple auto-advances
-        
-        if (isDataFolderPicked() && isGamesFolderPicked() && isBiosPresent()) {
-            mHasAutoAdvanced = true;
-            stopPeriodicCheck();
-            
-            // Use adaptive timeouts based on device capabilities
-            long autoAdvanceDelay = getTimeoutForDevice(2000, 4000); // 2s normal, 4s lower-end
-            long gamesDialogDelay = getTimeoutForDevice(3000, 6000); // 3s normal, 6s lower-end
-            
-            android.util.Log.d("SetupWizard", "Using timeouts - Auto-advance: " + autoAdvanceDelay +
-                              "ms, Games dialog: " + gamesDialogDelay + "ms");
-            
-            // All steps complete, auto-advance with adaptive delay
-            View decor = getDialog() != null && getDialog().getWindow() != null ? getDialog().getWindow().getDecorView() : null;
-            if (decor != null) {
-                decor.postDelayed(() -> {
-                    try {
-                        requireContext().getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-                                .edit().putBoolean("first_run_done", true).apply();
-                        MainActivity a = (MainActivity) requireActivity();
-                        a.setSetupWizardActive(false);
-                        dismissAllowingStateLoss();
-                        // Don't auto-open games dialog after setup wizard
-                        // This prevents crashes when BIOS is still booting
-                        // User can open it manually via home button when ready
-                    } catch (Throwable ignored) {}
-                }, autoAdvanceDelay);
+        @NonNull
+        @Override
+        public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View v = LayoutInflater.from(ctx).inflate(R.layout.item_setup_intro_page, parent, false);
+            return new VH(v);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull VH holder, int position) {
+            SetupStep step = steps.get(position);
+            holder.title.setText(step.title);
+            holder.description.setText(step.description);
+            holder.stepChip.setText(step.type.name());
+            holder.action.setText(step.ctaText);
+            holder.icon.setImageResource(step.iconRes);
+
+            boolean complete = listener.isComplete(step.type);
+            int completeBg = ContextCompat.getColor(ctx, R.color.md_theme_primary);
+            int pendingBg = ContextCompat.getColor(ctx, R.color.md_theme_outlineVariant);
+            int completeFg = ContextCompat.getColor(ctx, R.color.md_theme_onPrimary);
+            int pendingFg = ContextCompat.getColor(ctx, R.color.md_theme_onSurface);
+
+            holder.status.setText(complete ? "Complete" : "Pending");
+            holder.status.setBackgroundTintList(android.content.res.ColorStateList.valueOf(complete ? completeBg : pendingBg));
+            holder.status.setTextColor(complete ? completeFg : pendingFg);
+            holder.action.setIcon(ContextCompat.getDrawable(ctx, complete ? R.drawable.check_circle_24px : step.iconRes));
+            holder.action.setIconTint(android.content.res.ColorStateList.valueOf(0xFF000000));
+            holder.action.setEnabled(true);
+            holder.action.setOnClickListener(v -> listener.onAction(step.type));
+        }
+
+        @Override
+        public int getItemCount() {
+            return steps.size();
+        }
+
+        static class VH extends RecyclerView.ViewHolder {
+            final TextView title;
+            final TextView description;
+            final TextView stepChip;
+            final TextView status;
+            final MaterialButton action;
+            final ImageView icon;
+
+            VH(@NonNull View itemView) {
+                super(itemView);
+                title = itemView.findViewById(R.id.tv_title);
+                description = itemView.findViewById(R.id.tv_description);
+                stepChip = itemView.findViewById(R.id.tv_step_chip);
+                status = itemView.findViewById(R.id.tv_status);
+                action = itemView.findViewById(R.id.btn_action);
+                icon = itemView.findViewById(R.id.iv_icon);
             }
         }
     }
 }
-

@@ -41,6 +41,9 @@ namespace AndroidDeviceDetection
 		std::string board = GetSystemProperty("ro.product.board");
 		std::string platform = GetSystemProperty("ro.board.platform");
 		
+		Console.WriteLn("Device Detection: hardware='%s', board='%s', platform='%s'", 
+			hardware.c_str(), board.c_str(), platform.c_str());
+		
 		// Convert to lowercase for comparison
 		auto toLower = [](std::string str) {
 			for (char& c : str) c = std::tolower(c);
@@ -64,6 +67,9 @@ namespace AndroidDeviceDetection
 		std::string hardware = GetSystemProperty("ro.hardware");
 		std::string board = GetSystemProperty("ro.product.board");
 		std::string platform = GetSystemProperty("ro.board.platform");
+		
+		Console.WriteLn("Device Detection: hardware='%s', board='%s', platform='%s'", 
+			hardware.c_str(), board.c_str(), platform.c_str());
 		
 		auto toLower = [](std::string str) {
 			for (char& c : str) c = std::tolower(c);
@@ -99,13 +105,40 @@ namespace AndroidDeviceDetection
 		
 		// Check for other vendors via hardware string
 		std::string hardware = GetSystemProperty("ro.hardware");
-		if (hardware.find("exynos") != std::string::npos)
+		std::string manufacturer = GetSystemProperty("ro.product.manufacturer");
+		
+		auto toLower = [](std::string str) {
+			for (char& c : str) c = std::tolower(c);
+			return str;
+		};
+		
+		hardware = toLower(hardware);
+		manufacturer = toLower(manufacturer);
+		
+		// Samsung Exynos devices (Mali GPU)
+		if (hardware.find("exynos") != std::string::npos || 
+		    hardware.find("universal") != std::string::npos ||
+		    (manufacturer.find("samsung") != std::string::npos && hardware.find("samsungexynos") != std::string::npos))
 		{
 			Console.WriteLn("Detected Samsung Exynos (Mali GPU)");
 			return GPUVendor::ARM;
 		}
 		
-		Console.WriteLn("Unknown GPU vendor, hardware: %s", hardware.c_str());
+		// Kirin devices (Mali GPU)
+		if (hardware.find("kirin") != std::string::npos || hardware.find("hi") == 0)
+		{
+			Console.WriteLn("Detected HiSilicon Kirin (Mali GPU)");
+			return GPUVendor::ARM;
+		}
+		
+		// Rockchip devices (Mali GPU)
+		if (hardware.find("rk") == 0 || hardware.find("rockchip") != std::string::npos)
+		{
+			Console.WriteLn("Detected Rockchip (Mali GPU)");
+			return GPUVendor::ARM;
+		}
+		
+		Console.WriteLn("Unknown GPU vendor, hardware: %s, manufacturer: %s", hardware.c_str(), manufacturer.c_str());
 		return GPUVendor::Unknown;
 	}
 }

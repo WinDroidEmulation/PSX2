@@ -4,6 +4,27 @@
 #include "GS/Renderers/OpenGL/GLContextEGL.h"
 
 #include "common/Console.h"
+#ifdef __ANDROID__
+#include "AndroidDeviceDetection.h"
+#endif
+#include <EGL/eglext.h>
+
+// NDK headers may lack ANGLE platform defines; provide fallbacks so we can request ANGLE.
+#ifndef EGL_PLATFORM_ANGLE_ANGLE
+#define EGL_PLATFORM_ANGLE_ANGLE 0x3202
+#endif
+#ifndef EGL_PLATFORM_ANGLE_TYPE_ANGLE
+#define EGL_PLATFORM_ANGLE_TYPE_ANGLE 0x3203
+#endif
+#ifndef EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE
+#define EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE 0x320F
+#endif
+#ifndef EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE
+#define EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE 0x3209
+#endif
+#ifndef EGL_PLATFORM_ANGLE_DEVICE_TYPE_HARDWARE_ANGLE
+#define EGL_PLATFORM_ANGLE_DEVICE_TYPE_HARDWARE_ANGLE 0x320A
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -43,12 +64,36 @@ bool GLContextEGL::Initialize(const Version* versions_to_try, size_t num_version
 		return false;
 
 	int egl_major, egl_minor;
+retry_initialize:
 	if (!eglInitialize(m_display, &egl_major, &egl_minor))
 	{
+#ifdef __ANDROID__
+		if (m_tried_angle_display && m_used_angle_display)
+		{
+			const EGLint error = eglGetError();
+			Console.Warning("ANGLE: eglInitialize() failed with error 0x%x, retrying with native Mali driver", error);
+			m_used_angle_display = false;
+			m_display = eglGetDisplay(static_cast<EGLNativeDisplayType>(m_wi.display_connection));
+			if (m_display != EGL_NO_DISPLAY)
+				goto retry_initialize;
+		}
+#endif
 		Console.Error("eglInitialize() failed: %d", eglGetError());
 		return false;
 	}
 	Console.WriteLn("EGL Version: %d.%d", egl_major, egl_minor);
+	
+#ifdef __ANDROID__
+	if (m_used_angle_display)
+	{
+		Console.WriteLn("ANGLE: Successfully initialized ANGLE EGL display");
+		Console.WriteLn("ANGLE: OpenGL renderer will use ANGLE (GL ES -> Vulkan translation)");
+	}
+	else if (m_tried_angle_display)
+	{
+		Console.WriteLn("EGL: Using native Mali OpenGL ES driver (ANGLE not available)");
+	}
+#endif
 
 	const char* extensions = eglQueryString(m_display, EGL_EXTENSIONS);
 	if (extensions)
@@ -67,7 +112,62 @@ bool GLContextEGL::Initialize(const Version* versions_to_try, size_t num_version
 
 bool GLContextEGL::SetDisplay()
 {
-	m_display = eglGetDisplay(static_cast<EGLNativeDisplayType>(m_wi.display_connection));
+#ifdef __ANDROID__
+	const AndroidDeviceDetection::GPUVendor vendor = AndroidDeviceDetection::DetectGPUVendor();
+	const bool prefer_angle = (vendor == AndroidDeviceDetection::GPUVendor::ARM);
+	m_tried_angle_display = prefer_angle;
+
+	Console.WriteLn("EGL: GPU Vendor detected: %d (ARM=%d), prefer_angle=%d", 
+		static_cast<int>(vendor), static_cast<int>(AndroidDeviceDetection::GPUVendor::ARM), prefer_angle);
+
+	if (prefer_angle)
+	{
+		Console.WriteLn("ANGLE: Mali GPU detected, attempting to use ANGLE with Vulkan backend");
+		
+		auto get_platform_display = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(
+			eglGetProcAddress("eglGetPlatformDisplayEXT"));
+
+		if (get_platform_display)
+		{
+			Console.WriteLn("ANGLE: eglGetPlatformDisplayEXT found, requesting ANGLE display");
+			
+			const EGLint attribs[] = {
+				EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE,
+				EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_DEVICE_TYPE_HARDWARE_ANGLE,
+				EGL_NONE,
+			};
+
+			m_display = get_platform_display(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, attribs);
+			if (m_display != EGL_NO_DISPLAY)
+			{
+				Console.WriteLn("ANGLE: Successfully created ANGLE display with Vulkan backend for Mali GPU");
+				Console.WriteLn("ANGLE: OpenGL ES calls will be translated to Vulkan");
+				m_used_angle_display = true;
+			}
+			else
+			{
+				const EGLint error = eglGetError();
+				Console.Warning("ANGLE: eglGetPlatformDisplayEXT failed with error 0x%x, falling back to default EGL", error);
+			}
+		}
+		else
+		{
+			Console.Warning("ANGLE: eglGetPlatformDisplayEXT not available (ANGLE libraries may not be loaded)");
+			Console.Warning("ANGLE: Falling back to native Mali OpenGL ES driver");
+		}
+	}
+	else
+	{
+		Console.WriteLn("EGL: Non-Mali GPU detected, using native OpenGL ES driver");
+	}
+#endif
+
+	if (!m_display)
+	{
+		Console.WriteLn("EGL: Using default eglGetDisplay()");
+		m_display = eglGetDisplay(static_cast<EGLNativeDisplayType>(m_wi.display_connection));
+	}
+	
 	if (!m_display)
 	{
 		Console.Error("eglGetDisplay() failed: %d", eglGetError());
