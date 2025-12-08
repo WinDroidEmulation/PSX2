@@ -15,6 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Free disk space on runner
+        uses: rokibhasansagar/slimhub_actions@v25.42.5
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
