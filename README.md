@@ -161,7 +161,7 @@ PSX2 aims for high compatibility with the PlayStation 2 library. Performance var
 
 ### License
 
-This project is licensed under the **GNU General Public License v3.0** - see the [LICENSE](LICENSE) file for details or view it on our [GitHub Pages](https://www.gnu.org/licenses/gpl-3.0.en.html).
+This project is licensed under the **GNU General Public License v3.0** - see the [LICENSE](LICENSE) file for details or view it here [Official License](https://www.gnu.org/licenses/gpl-3.0.en.html).
 
 ### Third-Party Licenses
 
