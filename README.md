@@ -1,9 +1,9 @@
+# 🎮 PSX2 - PlayStation 2 Emulator for Android
+
 
 <a href="https://play.google.com/store/apps/details?id=com.izzy2lost.psx2&pcampaignid=web_share">
   <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80"/>
 </a>
-
-# 🎮 PSX2 - PlayStation 2 Emulator for Android
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://izzy2lost.github.io/PSX2/license.html)
 [![Android](https://img.shields.io/badge/Platform-Android-green.svg)](https://developer.android.com/)
