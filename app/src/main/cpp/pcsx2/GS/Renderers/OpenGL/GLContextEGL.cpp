@@ -6,6 +6,7 @@
 #include "common/Console.h"
 #ifdef __ANDROID__
 #include "AndroidDeviceDetection.h"
+#include <dlfcn.h>
 #endif
 #include <EGL/eglext.h>
 
@@ -15,6 +16,9 @@
 #endif
 #ifndef EGL_PLATFORM_ANGLE_TYPE_ANGLE
 #define EGL_PLATFORM_ANGLE_TYPE_ANGLE 0x3203
+#endif
+#ifndef EGL_PLATFORM_ANGLE_TYPE_OPENGL_ANGLE
+#define EGL_PLATFORM_ANGLE_TYPE_OPENGL_ANGLE 0x320D
 #endif
 #ifndef EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE
 #define EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE 0x320F
@@ -124,36 +128,86 @@ bool GLContextEGL::SetDisplay()
 	{
 		Console.WriteLn("ANGLE: Mali GPU detected, attempting to use ANGLE with Vulkan backend");
 		
-		auto get_platform_display = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(
-			eglGetProcAddress("eglGetPlatformDisplayEXT"));
-
-		if (get_platform_display)
+		// Try to load ANGLE's EGL library directly
+		void* angle_egl = dlopen("libEGL_angle.so", RTLD_NOW | RTLD_LOCAL);
+		if (angle_egl)
 		{
-			Console.WriteLn("ANGLE: eglGetPlatformDisplayEXT found, requesting ANGLE display");
+			Console.WriteLn("ANGLE: Successfully loaded libEGL_angle.so");
 			
-			const EGLint attribs[] = {
-				EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE,
-				EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_DEVICE_TYPE_HARDWARE_ANGLE,
-				EGL_NONE,
-			};
-
-			m_display = get_platform_display(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, attribs);
-			if (m_display != EGL_NO_DISPLAY)
+			// Get eglGetProcAddress from ANGLE's EGL library
+			auto angle_get_proc = reinterpret_cast<void* (*)(const char*)>(dlsym(angle_egl, "eglGetProcAddress"));
+			if (angle_get_proc)
 			{
-				Console.WriteLn("ANGLE: Successfully created ANGLE display with Vulkan backend for Mali GPU");
-				Console.WriteLn("ANGLE: OpenGL ES calls will be translated to Vulkan");
-				m_used_angle_display = true;
+				// Get eglGetPlatformDisplayEXT from ANGLE
+				auto get_platform_display = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(
+					angle_get_proc("eglGetPlatformDisplayEXT"));
+				
+				if (get_platform_display)
+				{
+					Console.WriteLn("ANGLE: eglGetPlatformDisplayEXT found in ANGLE library");
+					
+					// Try OpenGL backend first (Mali Vulkan is broken, but OpenGL works)
+					const EGLint attribs_gl[] = {
+						EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_OPENGL_ANGLE,
+						EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_DEVICE_TYPE_HARDWARE_ANGLE,
+						EGL_NONE,
+					};
+
+					Console.WriteLn("ANGLE: Trying OpenGL backend (Mali Vulkan is broken)");
+					m_display = get_platform_display(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, attribs_gl);
+					
+					if (m_display != EGL_NO_DISPLAY)
+					{
+						Console.WriteLn("ANGLE: Successfully created ANGLE display with OpenGL backend");
+						Console.WriteLn("ANGLE: OpenGL ES calls will be translated to desktop OpenGL");
+						m_used_angle_display = true;
+					}
+					else
+					{
+						const EGLint error = eglGetError();
+						Console.Warning("ANGLE: OpenGL backend failed (error 0x%x), trying Vulkan backend", error);
+						
+						// Fallback to Vulkan backend
+						const EGLint attribs_vk[] = {
+							EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE,
+							EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_DEVICE_TYPE_HARDWARE_ANGLE,
+							EGL_NONE,
+						};
+						
+						m_display = get_platform_display(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, attribs_vk);
+						if (m_display != EGL_NO_DISPLAY)
+						{
+							Console.WriteLn("ANGLE: Successfully created ANGLE display with Vulkan backend");
+							Console.WriteLn("ANGLE: OpenGL ES calls will be translated to Vulkan");
+							m_used_angle_display = true;
+						}
+						else
+						{
+							Console.Warning("ANGLE: Both backends failed, falling back to native driver");
+							dlclose(angle_egl);
+						}
+					}
+				}
+				else
+				{
+					Console.Warning("ANGLE: eglGetPlatformDisplayEXT not found in ANGLE library");
+					dlclose(angle_egl);
+				}
 			}
 			else
 			{
-				const EGLint error = eglGetError();
-				Console.Warning("ANGLE: eglGetPlatformDisplayEXT failed with error 0x%x, falling back to default EGL", error);
+				Console.Warning("ANGLE: eglGetProcAddress not found in libEGL_angle.so");
+				dlclose(angle_egl);
 			}
 		}
 		else
 		{
-			Console.Warning("ANGLE: eglGetPlatformDisplayEXT not available (ANGLE libraries may not be loaded)");
-			Console.Warning("ANGLE: Falling back to native Mali OpenGL ES driver");
+			Console.Warning("ANGLE: Failed to load libEGL_angle.so: %s", dlerror());
+		}
+		
+		if (!m_used_angle_display)
+		{
+			Console.Warning("ANGLE: Failed to initialize, falling back to native Mali OpenGL ES driver");
 		}
 	}
 	else
@@ -162,7 +216,7 @@ bool GLContextEGL::SetDisplay()
 	}
 #endif
 
-	if (!m_display)
+	if (m_display == EGL_NO_DISPLAY)
 	{
 		Console.WriteLn("EGL: Using default eglGetDisplay()");
 		m_display = eglGetDisplay(static_cast<EGLNativeDisplayType>(m_wi.display_connection));
