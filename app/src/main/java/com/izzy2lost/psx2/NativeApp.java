@@ -9,30 +9,13 @@ import java.io.File;
 import java.lang.ref.WeakReference;
 
 public class NativeApp {
-	private static boolean angleLoaded = false;
-	
 	static {
-		try {
-			// Try shipping ANGLE (EGL/GLES-over-Vulkan). If missing, we'll fall back to system drivers.
-			System.loadLibrary("EGL_angle");
-			System.loadLibrary("GLESv2_angle");
-			angleLoaded = true;
-			android.util.Log.i("NativeApp", "ANGLE libraries loaded successfully (EGL_angle, GLESv2_angle)");
-		} catch (UnsatisfiedLinkError e) {
-			// Optional: not all builds will bundle ANGLE.
-			android.util.Log.w("NativeApp", "ANGLE libraries not found, will use native OpenGL ES driver: " + e.getMessage());
-		}
-
 		try {
 			System.loadLibrary("emucore");
 			hasNoNativeBinary = false;
 		} catch (UnsatisfiedLinkError e) {
 			hasNoNativeBinary = true;
 		}
-	}
-	
-	public static boolean isAngleLoaded() {
-		return angleLoaded;
 	}
 
 	public static boolean hasNoNativeBinary;
