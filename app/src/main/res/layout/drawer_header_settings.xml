@@ -346,6 +346,14 @@
             android:textColor="@color/brand_primary"
             android:paddingBottom="8dp" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/drawer_sw_touch_right_stick"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Touch: Right Stick Joystick"
+            android:textColor="@android:color/white"
+            android:layout_marginBottom="8dp"/>
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/drawer_btn_test_controller"
             style="@style/Widget.Material3Expressive.Button.OutlinedButton"

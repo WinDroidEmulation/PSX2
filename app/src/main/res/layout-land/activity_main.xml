@@ -9,6 +9,7 @@
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:splitMotionEvents="true"
         android:keepScreenOn="true"
         tools:context=".MainActivity">
 
@@ -119,29 +120,48 @@
 
     </LinearLayout>
 
-    <!-- Left-bottom Joystick -->
-    <LinearLayout
-        android:id="@+id/ll_pad_joy"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:visibility="visible"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        android:layout_margin="6dp">
+      <!-- Left-bottom Joystick -->
+      <LinearLayout
+          android:id="@+id/ll_pad_joy"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:gravity="center"
+          android:orientation="vertical"
+          android:visibility="visible"
+          app:layout_constraintBottom_toBottomOf="parent"
+          app:layout_constraintStart_toStartOf="parent"
+          android:layout_margin="6dp">
+  
+          <com.izzy2lost.psx2.JoystickView
+              android:id="@+id/joystick_view"
+              android:layout_width="180dp"
+              android:layout_height="180dp"
+              android:layout_margin="2dp" />
+      </LinearLayout>
 
-        <com.izzy2lost.psx2.JoystickView
-            android:id="@+id/joystick_view"
-            android:layout_width="180dp"
-            android:layout_height="180dp"
-            android:layout_margin="2dp" />
-    </LinearLayout>
+      <!-- Optional right stick joystick (disabled by default) -->
+      <LinearLayout
+          android:id="@+id/ll_pad_rjoy"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:gravity="center"
+          android:orientation="vertical"
+          android:visibility="gone"
+          app:layout_constraintBottom_toBottomOf="parent"
+          app:layout_constraintEnd_toStartOf="@id/ll_pad_right_buttons"
+          android:layout_margin="6dp">
 
-    <!-- Right-bottom face and shoulder buttons -->
-    <LinearLayout
-        android:id="@+id/ll_pad_right_buttons"
-        android:layout_width="wrap_content"
+          <com.izzy2lost.psx2.JoystickView
+              android:id="@+id/joystick_view_right"
+              android:layout_width="160dp"
+              android:layout_height="160dp"
+              android:layout_margin="2dp" />
+      </LinearLayout>
+  
+      <!-- Right-bottom face and shoulder buttons -->
+      <LinearLayout
+          android:id="@+id/ll_pad_right_buttons"
+          android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:gravity="center"
         android:orientation="vertical"

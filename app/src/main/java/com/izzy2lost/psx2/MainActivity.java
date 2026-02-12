@@ -76,6 +76,8 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
     public static final int ORIENTATION_LANDSCAPE = 1;
     public static final int ORIENTATION_PORTRAIT = 2;
 
+    private static final String PREF_TOUCH_RIGHT_STICK = "touch_right_stick";
+
     private String m_szGamefile = "";
     private boolean mRaLoginPromptScheduled = false;
 
@@ -91,6 +93,10 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
     private boolean joyDownPressed = false;
     private boolean joyLeftPressed = false;
     private boolean joyRightPressed = false;
+    private boolean joyRUpPressed = false;
+    private boolean joyRDownPressed = false;
+    private boolean joyRLeftPressed = false;
+    private boolean joyRRightPressed = false;
     private boolean controllerUiApplied = false;
     private AlertDialog mBiosPromptDialog = null;
     private boolean mControllerHintShowing = false;
@@ -135,6 +141,7 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
         View btnSettings = findViewById(R.id.btn_settings);
         // Visibility toggle removed; no dependency on it for constraints
         View llJoy = findViewById(R.id.ll_pad_joy);
+        View llRJoy = findViewById(R.id.ll_pad_rjoy);
         View llDpad = findViewById(R.id.ll_pad_dpad);
         View llRight = findViewById(R.id.ll_pad_right_buttons);
         View llSelectStart = findViewById(R.id.ll_pad_select_start);
@@ -180,6 +187,31 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
             llJoy.setLayoutParams(lp);
             // Nudge joystick further left in both orientations to avoid Select overlap
             llJoy.setTranslationX(-dp(28));
+        }
+
+        if (llRJoy != null) {
+            ConstraintLayout.LayoutParams lp = safeCLP(llRJoy);
+            lp.startToStart = ConstraintLayout.LayoutParams.UNSET;
+            lp.endToEnd = ConstraintLayout.LayoutParams.UNSET;
+            lp.endToStart = ConstraintLayout.LayoutParams.UNSET;
+            lp.topToTop = ConstraintLayout.LayoutParams.UNSET;
+            lp.topToBottom = ConstraintLayout.LayoutParams.UNSET;
+            lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET;
+            lp.bottomToTop = ConstraintLayout.LayoutParams.UNSET;
+
+            if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+                if (llRight != null) lp.endToStart = llRight.getId();
+                else lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
+                lp.setMargins(dp(6), dp(6), dp(6), dp(6));
+            } else {
+                lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
+                if (llRight != null) lp.bottomToTop = llRight.getId();
+                else if (llSelectStart != null) lp.bottomToTop = llSelectStart.getId();
+                else lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+                lp.setMargins(dp(0), dp(0), dp(12), dp(6));
+            }
+            llRJoy.setLayoutParams(lp);
         }
 
         if (llDpad != null && llJoy != null) {
@@ -886,6 +918,44 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
             });
         }
 
+        // Optional Right JoystickView (right analog stick)
+        View joystickRight = findViewById(R.id.joystick_view_right);
+        if (joystickRight instanceof JoystickView) {
+            JoystickView jv = (JoystickView) joystickRight;
+            jv.setOnMoveListener((nx, ny, action) -> {
+                final float T = 0.3f;
+                boolean up = ny < -T;
+                boolean down = ny > T;
+                boolean left = nx < -T;
+                boolean right = nx > T;
+
+                if (up != joyRUpPressed) {
+                    sendKeyAction(jv, up ? MotionEvent.ACTION_DOWN : MotionEvent.ACTION_UP, PAD_R_UP);
+                    joyRUpPressed = up;
+                }
+                if (down != joyRDownPressed) {
+                    sendKeyAction(jv, down ? MotionEvent.ACTION_DOWN : MotionEvent.ACTION_UP, PAD_R_DOWN);
+                    joyRDownPressed = down;
+                }
+                if (left != joyRLeftPressed) {
+                    sendKeyAction(jv, left ? MotionEvent.ACTION_DOWN : MotionEvent.ACTION_UP, PAD_R_LEFT);
+                    joyRLeftPressed = left;
+                }
+                if (right != joyRRightPressed) {
+                    sendKeyAction(jv, right ? MotionEvent.ACTION_DOWN : MotionEvent.ACTION_UP, PAD_R_RIGHT);
+                    joyRRightPressed = right;
+                }
+
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    if (joyRUpPressed)  sendKeyAction(jv, MotionEvent.ACTION_UP, PAD_R_UP);
+                    if (joyRDownPressed) sendKeyAction(jv, MotionEvent.ACTION_UP, PAD_R_DOWN);
+                    if (joyRLeftPressed) sendKeyAction(jv, MotionEvent.ACTION_UP, PAD_R_LEFT);
+                    if (joyRRightPressed) sendKeyAction(jv, MotionEvent.ACTION_UP, PAD_R_RIGHT);
+                    joyRUpPressed = joyRDownPressed = joyRLeftPressed = joyRRightPressed = false;
+                }
+            });
+        }
+
         //// D-Pad buttons
         MaterialButton btn_pad_dir_top = findViewById(R.id.btn_pad_dir_top);
         if(btn_pad_dir_top != null) {
@@ -920,16 +990,48 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
     // Visibility toggle removed; no global hidden state flag
 
     private void setControlsVisible(boolean visible) {
+        if (!visible) {
+            releaseVirtualStickInputs();
+        }
         int vis = visible ? View.VISIBLE : View.GONE;
         View llDpad = findViewById(R.id.ll_pad_dpad);
         View llRight = findViewById(R.id.ll_pad_right_buttons);
         View llSelectStart = findViewById(R.id.ll_pad_select_start);
         View llJoy = findViewById(R.id.ll_pad_joy);
+        View llRJoy = findViewById(R.id.ll_pad_rjoy);
 
         if (llDpad != null) llDpad.setVisibility(vis);
         if (llRight != null) llRight.setVisibility(vis);
         if (llSelectStart != null) llSelectStart.setVisibility(vis);
         if (llJoy != null) llJoy.setVisibility(vis);
+        if (llRJoy != null) {
+            boolean show = visible && getSharedPreferences("app_prefs", MODE_PRIVATE).getBoolean(PREF_TOUCH_RIGHT_STICK, false);
+            llRJoy.setVisibility(show ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void releaseVirtualStickInputs() {
+        // Left stick
+        if (joyUpPressed || joyDownPressed || joyLeftPressed || joyRightPressed) {
+            try { NativeApp.setPadButton(ControllerInputHandler.PAD_L_UP, 0, false); } catch (Throwable ignored) {}
+            try { NativeApp.setPadButton(ControllerInputHandler.PAD_L_DOWN, 0, false); } catch (Throwable ignored) {}
+            try { NativeApp.setPadButton(ControllerInputHandler.PAD_L_LEFT, 0, false); } catch (Throwable ignored) {}
+            try { NativeApp.setPadButton(ControllerInputHandler.PAD_L_RIGHT, 0, false); } catch (Throwable ignored) {}
+            joyUpPressed = joyDownPressed = joyLeftPressed = joyRightPressed = false;
+        }
+
+        // Right stick
+        releaseVirtualRightStickInputs();
+    }
+
+    private void releaseVirtualRightStickInputs() {
+        if (joyRUpPressed || joyRDownPressed || joyRLeftPressed || joyRRightPressed) {
+            try { NativeApp.setPadButton(ControllerInputHandler.PAD_R_UP, 0, false); } catch (Throwable ignored) {}
+            try { NativeApp.setPadButton(ControllerInputHandler.PAD_R_DOWN, 0, false); } catch (Throwable ignored) {}
+            try { NativeApp.setPadButton(ControllerInputHandler.PAD_R_LEFT, 0, false); } catch (Throwable ignored) {}
+            try { NativeApp.setPadButton(ControllerInputHandler.PAD_R_RIGHT, 0, false); } catch (Throwable ignored) {}
+            joyRUpPressed = joyRDownPressed = joyRLeftPressed = joyRRightPressed = false;
+        }
     }
 
     // Removed visibility toggle function
@@ -2183,6 +2285,17 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
                 try { NativeApp.setHudVisible(isChecked); } catch (Throwable ignored) {}
             });
         }
+
+        // Touch right stick joystick (optional on-screen control)
+        com.google.android.material.materialswitch.MaterialSwitch swTouchRightStick = header.findViewById(R.id.drawer_sw_touch_right_stick);
+        if (swTouchRightStick != null && swTouchRightStick.getTag() == null) {
+            swTouchRightStick.setTag("setup");
+            swTouchRightStick.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                prefs.edit().putBoolean(PREF_TOUCH_RIGHT_STICK, isChecked).apply();
+                if (!isChecked) releaseVirtualRightStickInputs();
+                try { updateUiForControllerPresence(); } catch (Throwable ignored) {}
+            });
+        }
     }
 
     private void refreshDrawerSettings() {
@@ -2325,6 +2438,15 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
                 }
             } catch (Exception e) {
                 android.util.Log.e("MainActivity", "Error refreshing dev HUD switch: " + e.getMessage());
+            }
+
+            try {
+                com.google.android.material.materialswitch.MaterialSwitch swTouchRightStick = header.findViewById(R.id.drawer_sw_touch_right_stick);
+                if (swTouchRightStick != null) {
+                    swTouchRightStick.setChecked(prefs.getBoolean(PREF_TOUCH_RIGHT_STICK, false));
+                }
+            } catch (Exception e) {
+                android.util.Log.e("MainActivity", "Error refreshing touch right stick switch: " + e.getMessage());
             }
             
         } catch (Throwable t) {
@@ -2826,6 +2948,9 @@ public class MainActivity extends AppCompatActivity implements GamesCoverDialogF
     private void hideGamepadControls() {
         View joy = findViewById(R.id.ll_pad_joy);
         if (joy != null) joy.setVisibility(View.GONE);
+
+        View rjoy = findViewById(R.id.ll_pad_rjoy);
+        if (rjoy != null) rjoy.setVisibility(View.GONE);
         
         View dpad = findViewById(R.id.ll_pad_dpad);
         if (dpad != null) dpad.setVisibility(View.GONE);

@@ -19,6 +19,7 @@ public class JoystickView extends View {
     private final Paint knobPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float centerX, centerY, radius, knobX, knobY, knobRadius;
     private boolean isDragging = false;
+    private int activePointerId = MotionEvent.INVALID_POINTER_ID;
     private OnMoveListener listener;
 
     public JoystickView(Context ctx) { super(ctx); init(); }
@@ -72,41 +73,69 @@ public class JoystickView extends View {
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         final int action = event.getActionMasked();
+        final int actionIndex = event.getActionIndex();
         switch (action) {
             case MotionEvent.ACTION_DOWN:
-            case MotionEvent.ACTION_POINTER_DOWN:
                 isDragging = true;
+                activePointerId = event.getPointerId(0);
                 // fallthrough to move
             case MotionEvent.ACTION_MOVE:
                 if (isDragging) {
-                    float dx = event.getX() - centerX;
-                    float dy = event.getY() - centerY;
-                    // Clamp to circle
-                    float dist = (float)Math.hypot(dx, dy);
-                    if (dist > radius) {
-                        float scale = radius / dist;
-                        dx *= scale;
-                        dy *= scale;
+                    int pointerIndex = 0;
+                    if (activePointerId != MotionEvent.INVALID_POINTER_ID) {
+                        int idx = event.findPointerIndex(activePointerId);
+                        if (idx >= 0) pointerIndex = idx;
                     }
-                    knobX = centerX + dx;
-                    knobY = centerY + dy;
-                    invalidate();
-                    if (listener != null) {
-                        // Normalize to [-1,1], invert Y so up is negative value (screen y grows down)
-                        float nx = dx / radius;
-                        float ny = dy / radius;
-                        listener.onMove(clamp(nx), clamp(ny), MotionEvent.ACTION_MOVE);
-                    }
+                    updateFromPointer(event, pointerIndex);
+                }
+                return true;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                // Ignore additional pointers while dragging; if we aren't dragging, adopt the new pointer.
+                if (!isDragging) {
+                    isDragging = true;
+                    activePointerId = event.getPointerId(actionIndex);
+                    updateFromPointer(event, actionIndex);
+                    return true;
+                }
+                return true;
+            case MotionEvent.ACTION_POINTER_UP:
+                // If the active pointer goes up, release.
+                if (event.getPointerId(actionIndex) == activePointerId) {
+                    activePointerId = MotionEvent.INVALID_POINTER_ID;
+                    isDragging = false;
+                    resetKnob();
+                    if (listener != null) listener.onMove(0f, 0f, MotionEvent.ACTION_UP);
                 }
                 return true;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 isDragging = false;
+                activePointerId = MotionEvent.INVALID_POINTER_ID;
                 resetKnob();
                 if (listener != null) listener.onMove(0f, 0f, MotionEvent.ACTION_UP);
                 return true;
         }
         return super.onTouchEvent(event);
+    }
+
+    private void updateFromPointer(MotionEvent event, int pointerIndex) {
+        float dx = event.getX(pointerIndex) - centerX;
+        float dy = event.getY(pointerIndex) - centerY;
+        // Clamp to circle
+        float dist = (float) Math.hypot(dx, dy);
+        if (dist > radius) {
+            float scale = radius / dist;
+            dx *= scale;
+            dy *= scale;
+        }
+        knobX = centerX + dx;
+        knobY = centerY + dy;
+        invalidate();
+        if (listener != null) {
+            float nx = dx / radius;
+            float ny = dy / radius;
+            listener.onMove(clamp(nx), clamp(ny), MotionEvent.ACTION_MOVE);
+        }
     }
 
     private static float clamp(float v) { return Math.max(-1f, Math.min(1f, v)); }

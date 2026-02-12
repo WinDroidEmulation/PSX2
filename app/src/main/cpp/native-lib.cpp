@@ -28,6 +28,7 @@
 #include "SIO/Pad/PadDualshock2.h"
 #include "MTGS.h"
 #include "SDL3/SDL.h"
+#include <algorithm>
 #include <future>
 #ifdef __ANDROID__
 #include "SDL3/SDL.h"
@@ -400,7 +401,12 @@ Java_com_izzy2lost_psx2_NativeApp_setPadButton(JNIEnv *env, jclass clazz,
         default: _key = PadDualshock2::Inputs::PAD_CROSS ; break;
     }
 
-    Pad::SetControllerState(0, static_cast<u32>(_key), p_keyPressed ? 1.0 : 0.0);
+    float value = p_keyPressed ? 1.0f : 0.0f;
+    if (p_keyPressed && p_range > 0) {
+        const float denom = (p_range > 255) ? 32766.0f : 255.0f;
+        value = std::clamp(static_cast<float>(p_range) / denom, 0.0f, 1.0f);
+    }
+    Pad::SetControllerState(0, static_cast<u32>(_key), value);
 }
 
 extern "C" JNIEXPORT void JNICALL
