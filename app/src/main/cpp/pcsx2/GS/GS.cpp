@@ -34,6 +34,10 @@
 #include "GS/Renderers/Vulkan/GSDeviceVK.h"
 #endif
 
+#ifdef __ANDROID__
+#include "AndroidDeviceDetection.h"
+#endif
+
 #ifdef _WIN32
 
 #include "GS/Renderers/DX11/GSDevice11.h"
@@ -342,19 +346,23 @@ bool GSopen(const Pcsx2Config::GSOptions& config, GSRendererType renderer, u8* b
 {
 	GSConfig = config;
 
-	// If the selected renderer is Auto (often from a per-game settings layer),
-	// prefer the base/global renderer when it is explicitly set, otherwise
-	// fall back to the hardware/platform preferred renderer.
 	if (renderer == GSRendererType::Auto)
 	{
 		const int base_renderer_val = Host::GetBaseIntSettingValue("EmuCore/GS", "Renderer",
 			static_cast<int>(GSRendererType::Auto));
 		const GSRendererType base_renderer = static_cast<GSRendererType>(base_renderer_val);
-		if (base_renderer != GSRendererType::Auto)
-			renderer = base_renderer;
-		else
-			renderer = GSUtil::GetPreferredRenderer();
+		renderer = (base_renderer != GSRendererType::Auto) ? base_renderer : GSUtil::GetPreferredRenderer();
 	}
+
+#if defined(__ANDROID__) && defined(ENABLE_OPENGL)
+	// Don't attempt Vulkan first on Mali; it is known unstable on many devices.
+	if (renderer == GSRendererType::VK &&
+		AndroidDeviceDetection::DetectGPUVendor() == AndroidDeviceDetection::GPUVendor::ARM)
+	{
+		Console.Warning("Mali detected with Vulkan selected, forcing OpenGL for startup stability.");
+		renderer = GSRendererType::OGL;
+	}
+#endif
 
 	bool res = OpenGSDevice(renderer, true, false, vsync_mode, allow_present_throttle);
 	if (res)

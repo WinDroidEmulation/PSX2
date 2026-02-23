@@ -83,7 +83,6 @@ static std::mutex s_instance_mutex;
 
 // Device extensions that are required for PCSX2.
 static constexpr const char* s_required_device_extensions[] = {
-	VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
 	VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
 };
 
@@ -114,17 +113,7 @@ VkInstance GSDeviceVK::CreateVulkanInstance(const WindowInfo& wi, OptionalExtens
 	app_info.pEngineName = "PCSX2";
 	app_info.engineVersion = VK_MAKE_VERSION(
 		BuildVersion::GitTagHi, BuildVersion::GitTagMid, BuildVersion::GitTagLo);
-    // Prefer a newer Vulkan API when available, but clamp to loader support.
-    // This unlocks newer features on capable drivers without breaking older ones.
-    uint32_t loader_api_version = VK_API_VERSION_1_1;
-    if (vkEnumerateInstanceVersion)
-    {
-        uint32_t ver = 0;
-        if (vkEnumerateInstanceVersion(&ver) == VK_SUCCESS && ver != 0)
-            loader_api_version = ver;
-    }
-    const uint32_t desired_api_version = VK_API_VERSION_1_3; // headers provide up to 1.4, 1.3 is widely supported
-    app_info.apiVersion = (loader_api_version < desired_api_version) ? loader_api_version : desired_api_version;
+	app_info.apiVersion = VK_API_VERSION_1_1;
 
 	VkInstanceCreateInfo instance_create_info = {};
 	instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -434,6 +423,7 @@ bool GSDeviceVK::SelectDeviceExtensions(ExtensionList* extension_list, bool enab
 		SupportsExtension(VK_EXT_ATTACHMENT_FEEDBACK_LOOP_LAYOUT_EXTENSION_NAME, false);
 	m_optional_extensions.vk_ext_line_rasterization = SupportsExtension(VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME,
 		require_line_rasterization);
+	m_optional_extensions.vk_khr_push_descriptor = SupportsExtension(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME, false);
 	m_optional_extensions.vk_khr_driver_properties = SupportsExtension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME, false);
 
 	// glslang generates debug info instructions before phi nodes at the beginning of blocks when non-semantic debug info
@@ -764,19 +754,27 @@ bool GSDeviceVK::ProcessDeviceExtensions()
 		Vulkan::AddPointerToChain(&properties2, &m_device_driver_properties);
 	}
 
-	VkPhysicalDevicePushDescriptorPropertiesKHR push_descriptor_properties = {
-		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR};
-	Vulkan::AddPointerToChain(&properties2, &push_descriptor_properties);
-
-	// query
-	vkGetPhysicalDeviceProperties2(m_physical_device, &properties2);
-
-	// confirm we actually support it
-	if (push_descriptor_properties.maxPushDescriptors < NUM_TFX_TEXTURES)
+	if (m_optional_extensions.vk_khr_push_descriptor)
 	{
-		Console.Error("VK: maxPushDescriptors (%u) is below required (%u)", push_descriptor_properties.maxPushDescriptors,
-			NUM_TFX_TEXTURES);
-		return false;
+		VkPhysicalDevicePushDescriptorPropertiesKHR push_descriptor_properties = {
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR};
+		Vulkan::AddPointerToChain(&properties2, &push_descriptor_properties);
+
+		// query
+		vkGetPhysicalDeviceProperties2(m_physical_device, &properties2);
+
+		// If the device advertises fewer push descriptors than required, disable push-descriptor
+		// usage and continue with a fallback.
+		if (push_descriptor_properties.maxPushDescriptors < NUM_TFX_TEXTURES)
+		{
+			Console.Warning("VK: push descriptors available but maxPushDescriptors (%u) < required (%u). Disabling push descriptors.",
+				push_descriptor_properties.maxPushDescriptors, NUM_TFX_TEXTURES);
+			m_optional_extensions.vk_khr_push_descriptor = false;
+		}
+	}
+	else
+	{
+		vkGetPhysicalDeviceProperties2(m_physical_device, &properties2);
 	}
 
 	if (!line_rasterization_feature.bresenhamLines)
@@ -917,7 +915,9 @@ bool GSDeviceVK::CreateCommandBuffers()
 		resources.needs_fence_wait = false;
 
 		VkCommandPoolCreateInfo pool_info = {
-			VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, 0, m_graphics_queue_family_index};
+			VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr,
+			VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+			m_graphics_queue_family_index};
 		res = vkCreateCommandPool(m_device, &pool_info, nullptr, &resources.command_pool);
 		if (res != VK_SUCCESS)
 		{
@@ -961,13 +961,18 @@ bool GSDeviceVK::CreateCommandBuffers()
 bool GSDeviceVK::CreateGlobalDescriptorPool()
 {
 	static constexpr const VkDescriptorPoolSize pool_sizes[] = {
-		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 2},
-		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_COMBINED_IMAGE_SAMPLER_DESCRIPTORS_PER_FRAME },
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,          MAX_SAMPLED_IMAGE_DESCRIPTORS_PER_FRAME },
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          MAX_STORAGE_IMAGE_DESCRIPTORS_PER_FRAME },
+            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,       MAX_INPUT_ATTACHMENT_IMAGE_DESCRIPTORS_PER_FRAME },
+            { VK_DESCRIPTOR_TYPE_SAMPLER,                MAX_COMBINED_IMAGE_SAMPLER_DESCRIPTORS_PER_FRAME },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, MAX_DESCRIPTOR_SETS_PER_FRAME },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         MAX_DESCRIPTOR_SETS_PER_FRAME }
 	};
 
 	VkDescriptorPoolCreateInfo pool_create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr,
 		VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-		1024, // TODO: tweak this
+		MAX_DESCRIPTOR_SETS_PER_FRAME, // TODO: tweak this
 		static_cast<u32>(std::size(pool_sizes)), pool_sizes};
 
 	VkResult res = vkCreateDescriptorPool(m_device, &pool_create_info, nullptr, &m_global_descriptor_pool);
@@ -1726,8 +1731,9 @@ bool GSDeviceVK::InitSpinResources()
 	for (SpinResources& resources : m_spin_resources)
 	{
 		u32 index = &resources - &m_spin_resources[0];
-		VkCommandPoolCreateInfo pool_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-		pool_info.queueFamilyIndex = m_spin_queue_family_index;
+	VkCommandPoolCreateInfo pool_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+	pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	pool_info.queueFamilyIndex = m_spin_queue_family_index;
 		CHECKED_CREATE(vkCreateCommandPool, &pool_info, &resources.command_pool);
 		Vulkan::SetObjectName(m_device, resources.command_pool, "Spin Command Pool %u", index);
 
@@ -1988,7 +1994,7 @@ bool GSDeviceVK::AllocatePreinitializedGPUBuffer(u32 size, VkBuffer* gpu_buffer,
 	}
 
 	const VkBufferCreateInfo gpu_bci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0, size,
-		VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE};
+		(gpu_usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT), VK_SHARING_MODE_EXCLUSIVE};
 	const VmaAllocationCreateInfo gpu_aci = {0, VMA_MEMORY_USAGE_GPU_ONLY, 0, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT};
 	VmaAllocationInfo ai;
 	res = vmaCreateBuffer(m_allocator, &gpu_bci, &gpu_aci, gpu_buffer, gpu_allocation, &ai);
@@ -2001,7 +2007,11 @@ bool GSDeviceVK::AllocatePreinitializedGPUBuffer(u32 size, VkBuffer* gpu_buffer,
 
 	const VkBufferCopy buf_copy = {0u, 0u, size};
 	fill_callback(cpu_ai.pMappedData);
-	vmaFlushAllocation(m_allocator, cpu_allocation, 0, size);
+	// Avoid redundant flush if staging memory is HOST_COHERENT
+	VkMemoryPropertyFlags mem_props = 0;
+	vmaGetAllocationMemoryProperties(m_allocator, cpu_allocation, &mem_props);
+	if ((mem_props & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0)
+		vmaFlushAllocation(m_allocator, cpu_allocation, 0, size);
 	vkCmdCopyBuffer(GetCurrentInitCommandBuffer(), cpu_buffer, *gpu_buffer, 1, &buf_copy);
 	DeferBufferDestruction(cpu_buffer, cpu_allocation);
 	return true;
@@ -2624,7 +2634,7 @@ bool GSDeviceVK::CreateDeviceAndSwapChain()
 bool GSDeviceVK::CheckFeatures()
 {
 	const VkPhysicalDeviceLimits& limits = m_device_properties.limits;
-	//const u32 vendorID = m_device_properties.vendorID;
+	const u32 vendorID = m_device_properties.vendorID;
 	//const bool isAMD = (vendorID == 0x1002 || vendorID == 0x1022);
 	//const bool isNVIDIA = (vendorID == 0x10DE);
 
@@ -2666,6 +2676,15 @@ bool GSDeviceVK::CheckFeatures()
 							   limits.pointSizeRange[1] >= f_upscale);
 	m_features.line_expand =
 		(m_device_features.wideLines && limits.lineWidthRange[0] <= f_upscale && limits.lineWidthRange[1] >= f_upscale);
+
+	// Mobile GPUs (Adreno/Mali) often emulate wide lines/points expensively; prefer vertex expansion there.
+	if (vendorID == 0x5143u || vendorID == 0x13B5u)
+	{
+		if (m_features.point_expand || m_features.line_expand)
+			Console.WriteLn("VK: Forcing vertex-based expansion for points/lines on mobile GPU (vendor 0x%X).", vendorID);
+		m_features.point_expand = false;
+		m_features.line_expand = false;
+	}
 
 	DevCon.WriteLn("Optional features:%s%s%s%s%s", m_features.primitive_id ? " primitive_id" : "",
 		m_features.texture_barrier ? " texture_barrier" : "", m_features.framebuffer_fetch ? " framebuffer_fetch" : "",
@@ -3582,6 +3601,9 @@ VkSampler GSDeviceVK::GetSampler(GSHWDrawConfig::SamplerSelector ss)
 		return it->second;
 
 	const bool aniso = (ss.aniso && GSConfig.MaxAnisotropy > 1 && m_device_features.samplerAnisotropy);
+	const float max_supported_aniso = m_device_features.samplerAnisotropy ?
+		std::max(1.0f, static_cast<float>(m_device_properties.limits.maxSamplerAnisotropy)) : 1.0f;
+	const float aniso_value = aniso ? std::min(static_cast<float>(GSConfig.MaxAnisotropy), max_supported_aniso) : 1.0f;
 
 	// See https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkSamplerCreateInfo.html#_description
 	// for the reasoning behind 0.25f here.
@@ -3596,8 +3618,8 @@ VkSampler GSDeviceVK::GetSampler(GSHWDrawConfig::SamplerSelector ss)
 			ss.tav ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE), // v
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, // w
 		0.0f, // lod bias
-		static_cast<VkBool32>(aniso), // anisotropy enable
-		aniso ? static_cast<float>(GSConfig.MaxAnisotropy) : 1.0f, // anisotropy
+	static_cast<VkBool32>(aniso), // anisotropy enable
+	aniso_value, // anisotropy
 		VK_FALSE, // compare enable
 		VK_COMPARE_OP_ALWAYS, // compare op
 		0.0f, // min lod
@@ -3773,7 +3795,8 @@ bool GSDeviceVK::CreatePipelineLayouts()
 	// Convert Pipeline Layout
 	//////////////////////////////////////////////////////////////////////////
 
-	dslb.SetPushFlag();
+	if (m_optional_extensions.vk_khr_push_descriptor)
+		dslb.SetPushFlag();
 	dslb.AddBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, NUM_UTILITY_SAMPLERS, VK_SHADER_STAGE_FRAGMENT_BIT);
 	if ((m_utility_ds_layout = dslb.Create(dev)) == VK_NULL_HANDLE)
 		return false;
@@ -3797,7 +3820,8 @@ bool GSDeviceVK::CreatePipelineLayouts()
 		return false;
 	Vulkan::SetObjectName(dev, m_tfx_ubo_ds_layout, "TFX UBO descriptor layout");
 
-	dslb.SetPushFlag();
+	if (m_optional_extensions.vk_khr_push_descriptor)
+		dslb.SetPushFlag();
 	dslb.AddBinding(TFX_TEXTURE_TEXTURE, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
 	dslb.AddBinding(TFX_TEXTURE_PALETTE, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
 	dslb.AddBinding(TFX_TEXTURE_RT,
@@ -4356,7 +4380,8 @@ bool GSDeviceVK::CompileCASPipelines()
 	Vulkan::DescriptorSetLayoutBuilder dslb;
 	Vulkan::PipelineLayoutBuilder plb;
 
-	dslb.SetPushFlag();
+	if (m_optional_extensions.vk_khr_push_descriptor)
+		dslb.SetPushFlag();
 	dslb.AddBinding(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT);
 	dslb.AddBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT);
 	if ((m_cas_ds_layout = dslb.Create(dev)) == VK_NULL_HANDLE)
@@ -4563,7 +4588,25 @@ bool GSDeviceVK::DoCAS(
 	Vulkan::DescriptorSetUpdateBuilder dsub;
 	dsub.AddImageDescriptorWrite(VK_NULL_HANDLE, 0, sTexVK->GetView(), sTexVK->GetVkLayout());
 	dsub.AddStorageImageDescriptorWrite(VK_NULL_HANDLE, 1, dTexVK->GetView(), dTexVK->GetVkLayout());
-	dsub.PushUpdate(cmdbuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_cas_pipeline_layout, 0, false);
+	if (m_optional_extensions.vk_khr_push_descriptor)
+	{
+		dsub.PushUpdate(cmdbuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_cas_pipeline_layout, 0, false);
+	}
+	else
+	{
+		VkDescriptorSet tmp = AllocatePersistentDescriptorSet(m_cas_ds_layout);
+		if (tmp != VK_NULL_HANDLE)
+		{
+			dsub.UpdateToDescriptorSet(m_device, tmp, true);
+			vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_cas_pipeline_layout, 0, 1, &tmp, 0, nullptr);
+			FrameResources& fres = m_frame_resources[m_current_frame];
+			fres.cleanup_resources.push_back([this, tmp]() { vkFreeDescriptorSets(m_device, m_global_descriptor_pool, 1, &tmp); });
+		}
+		else
+		{
+			Console.Error("VK: Failed to allocate fallback descriptor set for CAS push-descriptor emulation.");
+		}
+	}
 
 	// the actual meat and potatoes! only four commands.
 	static const int threadGroupWorkRegionDim = 16;
@@ -5447,7 +5490,26 @@ bool GSDeviceVK::ApplyTFXState(bool already_execed)
 				m_tfx_textures[TFX_TEXTURE_PRIMID]->GetView(), m_tfx_textures[TFX_TEXTURE_PRIMID]->GetVkLayout());
 		}
 
-		dsub.PushUpdate(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_tfx_pipeline_layout, TFX_DESCRIPTOR_SET_TEXTURES);
+		if (m_optional_extensions.vk_khr_push_descriptor)
+		{
+			dsub.PushUpdate(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_tfx_pipeline_layout, TFX_DESCRIPTOR_SET_TEXTURES);
+		}
+		else
+		{
+			VkDescriptorSet tmp = AllocatePersistentDescriptorSet(m_tfx_texture_ds_layout);
+			if (tmp != VK_NULL_HANDLE)
+			{
+				dsub.UpdateToDescriptorSet(m_device, tmp, true);
+				vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_tfx_pipeline_layout,
+					TFX_DESCRIPTOR_SET_TEXTURES, 1, &tmp, 0, nullptr);
+				FrameResources& fres = m_frame_resources[m_current_frame];
+				fres.cleanup_resources.push_back([this, tmp]() { vkFreeDescriptorSets(m_device, m_global_descriptor_pool, 1, &tmp); });
+			}
+			else
+			{
+				Console.Error("VK: Failed to allocate fallback descriptor set for TFX push-descriptor emulation.");
+			}
+		}
 	}
 
 	ApplyBaseState(flags, cmdbuf);
@@ -5470,7 +5532,25 @@ bool GSDeviceVK::ApplyUtilityState(bool already_execed)
 		Vulkan::DescriptorSetUpdateBuilder dsub;
 		dsub.AddCombinedImageSamplerDescriptorWrite(
 			VK_NULL_HANDLE, 0, m_utility_texture->GetView(), m_utility_sampler, m_utility_texture->GetVkLayout());
-		dsub.PushUpdate(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_utility_pipeline_layout, 0, false);
+		if (m_optional_extensions.vk_khr_push_descriptor)
+		{
+			dsub.PushUpdate(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_utility_pipeline_layout, 0, false);
+		}
+		else
+		{
+			VkDescriptorSet tmp = AllocatePersistentDescriptorSet(m_utility_ds_layout);
+			if (tmp != VK_NULL_HANDLE)
+			{
+				dsub.UpdateToDescriptorSet(m_device, tmp, true);
+				vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_utility_pipeline_layout, 0, 1, &tmp, 0, nullptr);
+				FrameResources& fres = m_frame_resources[m_current_frame];
+				fres.cleanup_resources.push_back([this, tmp]() { vkFreeDescriptorSets(m_device, m_global_descriptor_pool, 1, &tmp); });
+			}
+			else
+			{
+				Console.Error("VK: Failed to allocate fallback descriptor set for utility push-descriptor emulation.");
+			}
+		}
 	}
 
 

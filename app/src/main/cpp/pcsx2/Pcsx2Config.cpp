@@ -720,7 +720,7 @@ Pcsx2Config::GSOptions::GSOptions()
 	OsdShowFPS = true;
 	OsdShowVPS = true;
 	OsdShowCPU = true;
-	OsdShowGPU = true;
+	OsdShowGPU = false;
 	OsdShowResolution = true;
 	OsdShowGSStats = false;
 	OsdShowIndicators = true;
@@ -867,6 +867,7 @@ bool Pcsx2Config::GSOptions::OptionsAreEqual(const GSOptions& right) const
 		OpEqu(AudioCaptureBitrate) &&
 
 		OpEqu(Adapter) &&
+		OpEqu(CustomDriverPath) &&
 
 		OpEqu(HWDumpDirectory) &&
 		OpEqu(SWDumpDirectory));
@@ -881,6 +882,7 @@ bool Pcsx2Config::GSOptions::RestartOptionsAreEqual(const GSOptions& right) cons
 {
 	return OpEqu(Renderer) &&
 		   OpEqu(Adapter) &&
+		   OpEqu(CustomDriverPath) &&
 		   OpEqu(UseDebugDevice) &&
 		   OpEqu(UseBlitSwapChain) &&
 		   OpEqu(DisableShaderCache) &&
@@ -1054,6 +1056,7 @@ void Pcsx2Config::GSOptions::LoadSave(SettingsWrapper& wrap)
 	SettingsWrapBitfieldEx(AudioCaptureBitrate, "AudioCaptureBitrate");
 
 	SettingsWrapEntry(Adapter);
+	SettingsWrapEntry(CustomDriverPath);
 	SettingsWrapEntry(HWDumpDirectory);
 	if (!HWDumpDirectory.empty() && !Path::IsAbsolute(HWDumpDirectory))
 		HWDumpDirectory = Path::Combine(EmuFolders::DataRoot, HWDumpDirectory);

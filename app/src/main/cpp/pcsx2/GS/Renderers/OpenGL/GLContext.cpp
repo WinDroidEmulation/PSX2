@@ -60,9 +60,10 @@ std::vector<GLContext::FullscreenModeInfo> GLContext::EnumerateFullscreenModes()
 std::unique_ptr<GLContext> GLContext::Create(const WindowInfo& wi, const Version* versions_to_try,
 											 size_t num_versions_to_try)
 {
-	if (ShouldPreferESContext())
+	const bool prefer_es = (wi.type == WindowInfo::Type::Android) || ShouldPreferESContext();
+	if (prefer_es)
 	{
-		// move ES versions to the front
+		// Move ES profiles to the front so EGL negotiates a GLES context first on Android/mobile.
 		Version* new_versions_to_try = static_cast<Version*>(alloca(sizeof(Version) * num_versions_to_try));
 		size_t count = 0;
 		for (size_t i = 0; i < num_versions_to_try; i++)
@@ -70,11 +71,13 @@ std::unique_ptr<GLContext> GLContext::Create(const WindowInfo& wi, const Version
 			if (versions_to_try[i].profile == Profile::ES)
 				new_versions_to_try[count++] = versions_to_try[i];
 		}
+
 		for (size_t i = 0; i < num_versions_to_try; i++)
 		{
 			if (versions_to_try[i].profile != Profile::ES)
 				new_versions_to_try[count++] = versions_to_try[i];
 		}
+
 		versions_to_try = new_versions_to_try;
 	}
 
@@ -107,6 +110,11 @@ std::unique_ptr<GLContext> GLContext::Create(const WindowInfo& wi, const Version
 	}
 
 	context_being_created = nullptr;
+
+	const char* gl_vendor = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
+	const char* gl_renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+	if (gl_vendor && gl_renderer)
+		DisableBrokenExtensions(gl_vendor, gl_renderer);
 
 	return context;
 }

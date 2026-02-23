@@ -4,7 +4,7 @@
 #include "GS/Renderers/OpenGL/GLContextEGL.h"
 
 #include "common/Console.h"
-#include <EGL/eglext.h>
+#include "GS/GS.h"
 
 #include <algorithm>
 #include <cstring>
@@ -68,7 +68,12 @@ bool GLContextEGL::Initialize(const Version* versions_to_try, size_t num_version
 
 bool GLContextEGL::SetDisplay()
 {
+	// On Android, there is no native display handle!ç
+#ifdef __ANDROID__
+	m_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+#else
 	m_display = eglGetDisplay(static_cast<EGLNativeDisplayType>(m_wi.display_connection));
+#endif
 	if (!m_display)
 	{
 		Console.Error("eglGetDisplay() failed: %d", eglGetError());
@@ -322,7 +327,7 @@ bool GLContextEGL::CreateContext(const Version& version, EGLContext share_contex
         config = configs.front();
     }
 
-	int attribs[8];
+	int attribs[16];
 	int nattribs = 0;
 	if (version.profile != Profile::NoProfile)
 	{
@@ -330,6 +335,16 @@ bool GLContextEGL::CreateContext(const Version& version, EGLContext share_contex
 		attribs[nattribs++] = version.major_version;
 		attribs[nattribs++] = EGL_CONTEXT_MINOR_VERSION;
 		attribs[nattribs++] = version.minor_version;
+	}
+
+	{
+		const char* egl_ext = eglQueryString(m_display, EGL_EXTENSIONS);
+		const bool has_egl_no_error = (egl_ext && std::strstr(egl_ext, "EGL_KHR_create_context_no_error"));
+		if (has_egl_no_error && !GSConfig.UseDebugDevice)
+		{
+			attribs[nattribs++] = EGL_CONTEXT_OPENGL_NO_ERROR_KHR;
+			attribs[nattribs++] = EGL_TRUE;
+		}
 	}
 	attribs[nattribs++] = EGL_NONE;
 	attribs[nattribs++] = 0;

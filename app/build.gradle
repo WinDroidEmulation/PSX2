@@ -8,6 +8,18 @@ def keystoreProperties = new Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
+def signingKeys = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
+def missingSigningKeys = signingKeys.findAll { !keystoreProperties.getProperty(it)?.trim() }
+def hasReleaseSigning = keystorePropertiesFile.exists() && missingSigningKeys.isEmpty()
+if (hasReleaseSigning) {
+    def configuredStoreFile = file(keystoreProperties.getProperty('storeFile'))
+    if (!configuredStoreFile.exists()) {
+        logger.lifecycle("[app] Release keystore file not found at ${configuredStoreFile}. Falling back to debug signing for release.")
+        hasReleaseSigning = false
+    }
+} else {
+    logger.lifecycle("[app] Release signing not fully configured (${missingSigningKeys}). Falling back to debug signing for release.")
+}
 
 android {
     namespace = 'com.izzy2lost.psx2'
@@ -16,7 +28,7 @@ android {
 
     signingConfigs {
         release {
-            if (keystorePropertiesFile.exists()) {
+            if (hasReleaseSigning) {
                 storeFile file(keystoreProperties['storeFile'])
                 storePassword keystoreProperties['storePassword']
                 keyAlias keystoreProperties['keyAlias']
@@ -29,8 +41,8 @@ android {
         applicationId = "com.izzy2lost.psx2"
         minSdk = 26
         targetSdk = 36
-        versionCode 21
-        versionName "1.1.9"
+        versionCode 23
+        versionName "1.2.1"
         // APK
         base.archivesName = "PSX2_${versionCode}_${new Date().format('yyyyMMddHHmm')}"
 
@@ -57,7 +69,7 @@ android {
             minifyEnabled = false
             shrinkResources = false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             ndk {
                 debugSymbolLevel 'SYMBOL_TABLE'
             }

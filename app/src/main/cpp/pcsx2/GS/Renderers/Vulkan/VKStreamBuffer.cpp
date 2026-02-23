@@ -59,6 +59,10 @@ bool VKStreamBuffer::Create(VkBufferUsageFlags usage, u32 size)
 
 	VmaAllocationCreateInfo aci = {};
 	aci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+#ifdef VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+	// Hint the allocator that we write sequentially from CPU to GPU
+	aci.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+#endif
 	aci.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
 	aci.preferredFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
@@ -84,6 +88,10 @@ bool VKStreamBuffer::Create(VkBufferUsageFlags usage, u32 size)
 	m_allocation = new_allocation;
 	m_buffer = new_buffer;
 	m_host_pointer = static_cast<u8*>(ai.pMappedData);
+	// Cache coherency so we can avoid redundant flushes on HOST_COHERENT memory
+	VkMemoryPropertyFlags mem_props = 0;
+	vmaGetAllocationMemoryProperties(GSDeviceVK::GetInstance()->GetAllocator(), m_allocation, &mem_props);
+	m_allocation_is_coherent = (mem_props & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
 	return true;
 }
 
@@ -181,7 +189,8 @@ void VKStreamBuffer::CommitMemory(u32 final_num_bytes)
 	pxAssert(final_num_bytes <= m_current_space);
 
 	// For non-coherent mappings, flush the memory range
-	vmaFlushAllocation(GSDeviceVK::GetInstance()->GetAllocator(), m_allocation, m_current_offset, final_num_bytes);
+	if (!m_allocation_is_coherent)
+		vmaFlushAllocation(GSDeviceVK::GetInstance()->GetAllocator(), m_allocation, m_current_offset, final_num_bytes);
 
 	m_current_offset += final_num_bytes;
 	m_current_space -= final_num_bytes;

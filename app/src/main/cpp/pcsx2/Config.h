@@ -321,7 +321,7 @@ enum class BiFiltering : u8
 
 enum class TriFiltering : s8
 {
-	Automatic = -1,
+	Automatic,
 	Off,
 	PS2,
 	Forced,
@@ -847,6 +847,7 @@ struct Pcsx2Config
 		int AudioCaptureBitrate = DEFAULT_AUDIO_CAPTURE_BITRATE;
 
 		std::string Adapter;
+		std::string CustomDriverPath;
 		std::string HWDumpDirectory;
 		std::string SWDumpDirectory;
 
