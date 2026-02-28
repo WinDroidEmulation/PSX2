@@ -1,0 +1,145 @@
+name: Build PSX2 (Signed APK)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: psx2-signed-release
+  cancel-in-progress: true
+
+jobs:
+  build_release:
+    runs-on: ubuntu-latest
+    environment: release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept SDK licenses
+        run: yes | sdkmanager --licenses
+
+      - name: Install SDK components
+        run: |
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;28.2.13676358" \
+            "cmake;3.22.1"
+
+      - name: Validate signing secrets
+        run: |
+          [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ] || exit 1
+          [ -n "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" ] || exit 1
+          [ -n "${{ secrets.ANDROID_KEY_ALIAS }}" ] || exit 1
+          [ -n "${{ secrets.ANDROID_KEY_PASSWORD }}" ] || exit 1
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 --decode > keystore.jks
+
+      - name: Create keystore.properties
+        run: |
+          echo "storeFile=keystore.jks" > keystore.properties
+          echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> keystore.properties
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> keystore.properties
+          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Build Signed Release APK
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Get version from app/build.gradle
+        id: version
+        run: |
+          VERSION_NAME=$(grep -m1 'versionName' app/build.gradle | awk -F\" '{print $2}')
+          echo "version=$VERSION_NAME" >> $GITHUB_OUTPUT
+
+      - name: Find Release APK
+        id: apk
+        run: |
+          APK_PATH="$(find . -type f -name "*.apk" | grep -i release | sort | tail -n 1)"
+
+          if [ -z "$APK_PATH" ]; then
+            echo "No release APK found. All APKs:"
+            find . -type f -name "*.apk" -print
+            exit 1
+          fi
+
+          echo "Found APK: $APK_PATH"
+          echo "path=$APK_PATH" >> $GITHUB_OUTPUT
+
+      - name: Verify APK signature
+        run: |
+          echo "Verifying: ${{ steps.apk.outputs.path }}"
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" verify --print-certs "${{ steps.apk.outputs.path }}"
+
+      - name: Compute daily r number
+        id: daily_r
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+          WF_NAME: ${{ github.workflow }}
+        run: |
+          TODAY_IST=$(TZ=Asia/Kolkata date +%Y-%m-%d)
+          START_EPOCH=$(TZ=Asia/Kolkata date -d "$TODAY_IST 00:00:00" +%s)
+          END_EPOCH=$((START_EPOCH + 86400))
+
+          COUNT=$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
+            --jq "[.workflow_runs[]
+              | select(.name == env.WF_NAME)
+              | select((.id|tostring) != env.RUN_ID)
+              | select((.created_at | fromdateiso8601) >= ($START_EPOCH|tonumber))
+              | select((.created_at | fromdateiso8601) < ($END_EPOCH|tonumber))
+            ] | length")
+
+          R=$((COUNT + 1))
+          echo "r=r${R}" >> $GITHUB_OUTPUT
+
+      - name: Rename APK
+        id: rename
+        run: |
+          NEW_NAME="PSX2-v${{ steps.version.outputs.version }}-${{ steps.daily_r.outputs.r }}.apk"
+          mv "${{ steps.apk.outputs.path }}" "$NEW_NAME"
+          echo "path=$NEW_NAME" >> $GITHUB_OUTPUT
+          echo "name=$NEW_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload Signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.rename.outputs.name }}
+          path: ${{ steps.rename.outputs.path }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: psx2-v${{ steps.version.outputs.version }}-${{ steps.daily_r.outputs.r }}
+          name: PSX2 v${{ steps.version.outputs.version }} ${{ steps.daily_r.outputs.r }}
+          draft: true
+          files: ${{ steps.rename.outputs.path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup
+        if: always()
+        run: rm -f keystore.jks keystore.properties
